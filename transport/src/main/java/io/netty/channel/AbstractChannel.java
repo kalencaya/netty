@@ -434,7 +434,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         private boolean neverRegistered = true;
 
         private void assertEventLoop() {
-            assert !registered || eventLoop.inEventLoop();
+            //这里使用的是Java原生的断言，Java原生的断言默认是关闭的，需要自己手动开启，否则这里是不执行的。
+            assert !registered || eventLoop.inEventLoop(); //最简单的实现就是Thread.currentThread() == this.thread
         }
 
         @Override
@@ -560,7 +561,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
             boolean wasActive = isActive();
             try {
-                doBind(localAddress);
+                doBind(localAddress);  //调用Java原生的绑定端口的API
             } catch (Throwable t) {
                 safeSetFailure(promise, t);
                 closeIfClosed();
