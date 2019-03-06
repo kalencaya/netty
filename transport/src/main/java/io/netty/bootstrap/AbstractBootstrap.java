@@ -279,15 +279,18 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     private ChannelFuture doBind(final SocketAddress localAddress) {
+        //初始化并注册一个Channel对象。因为是异步的注册，所以返回了一个ChannelFuture对象。
         final ChannelFuture regFuture = initAndRegister();
         final Channel channel = regFuture.channel();
+        //如果初始化注册过程发生异常，则直接返回。
         if (regFuture.cause() != null) {
             return regFuture;
         }
-
+        //注册完成
         if (regFuture.isDone()) {
             // At this point we know that the registration was complete and successful.
             ChannelPromise promise = channel.newPromise();
+            //真正将Channel绑定到eventloop的地方，真正绑定端口的地方
             doBind0(regFuture, channel, localAddress, promise);
             return promise;
         } else {
@@ -329,7 +332,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             // as the Channel is not registered yet we need to force the usage of the GlobalEventExecutor
             return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
         }
-
+        //register方法最后调用的是nio的注册api: selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
         ChannelFuture regFuture = config().group().register(channel);
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {
