@@ -845,7 +845,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         public final void beginRead() {
             assertEventLoop();
 
-            if (!isActive()) {
+            if (!isActive()) { //此方法的执行在#bind0()方法之后，否则这里会直接返回
                 return;
             }
 
