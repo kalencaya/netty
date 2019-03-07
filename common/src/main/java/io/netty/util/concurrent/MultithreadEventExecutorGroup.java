@@ -32,7 +32,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
 
     private final EventExecutor[] children;
     private final Set<EventExecutor> readonlyChildren;
-    private final AtomicInteger terminatedChildren = new AtomicInteger();
+    private final AtomicInteger terminatedChildren = new AtomicInteger(); //终止的EventExecutor数量
     private final Promise<?> terminationFuture = new DefaultPromise(GlobalEventExecutor.INSTANCE);
     private final EventExecutorChooserFactory.EventExecutorChooser chooser;
 
@@ -100,7 +100,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
                             }
                         } catch (InterruptedException interrupted) {
                             // Let the caller handle the interruption.
-                            Thread.currentThread().interrupt();
+                            Thread.currentThread().interrupt(); //InterruptedException会清除中断标识
                             break;
                         }
                     }
@@ -137,6 +137,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
         return chooser.next();
     }
 
+    //为了防止在迭代过程中出现问题，所以使用的是final的
     @Override
     public Iterator<EventExecutor> iterator() {
         return readonlyChildren.iterator();
