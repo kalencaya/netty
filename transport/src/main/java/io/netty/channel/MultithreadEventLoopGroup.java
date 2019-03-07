@@ -78,6 +78,7 @@ public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutor
         return (EventLoop) super.next();
     }
 
+    //覆盖弗雷的方法，把返回值类型换成了EventLoop
     @Override
     protected abstract EventLoop newChild(Executor executor, Object... args) throws Exception;
 
