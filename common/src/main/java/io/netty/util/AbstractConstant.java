@@ -26,6 +26,9 @@ public abstract class AbstractConstant<T extends AbstractConstant<T>> implements
      * 这里的四个变量都是final，代表不可变。但是uniqueIdGenerator是一个实例变量，是可以改变的。
      * 但是从构造器可以看出，uniqueIdGenerator的主要作用是用来获取uniquifier的。
      * 所以这种使用final变量的目的还是为了实现不可变的对象以保证线程安全。
+     * 因为在{@link Constant}中的注释说明{@link Constant}的创建和管理由
+     * {@link ConstantPool}实现，所以要理解如何实现的线程安全，还需要结合
+     * {@link ConstantPool}实现细节。
      */
     private static final AtomicLong uniqueIdGenerator = new AtomicLong();
     private final int id;
