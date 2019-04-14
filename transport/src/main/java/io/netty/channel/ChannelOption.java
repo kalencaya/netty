@@ -17,30 +17,35 @@ package io.netty.channel;
 
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.util.AbstractConstant;
+import io.netty.util.Constant;
 import io.netty.util.ConstantPool;
 
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 
 /**
- * A {@link ChannelOption} allows to configure a {@link ChannelConfig} in a type-safe
- * way. Which {@link ChannelOption} is supported depends on the actual implementation
- * of {@link ChannelConfig} and may depend on the nature of the transport it belongs
- * to.
+ * 一个{@link ChannelOption}允许配置一个{@link ChannelConfig}，这个配置过程是类型安全的。因
+ * 为{@link ChannelOption}继承了{@link AbstractConstant}，所以{@link ChannelOption}在
+ * 线程安全方面也是有一定支持的。{@link ChannelOption}支持哪些配置依赖于{@link ChannelConfig}的具体实现，也有可能依赖于它的传输方式。
  *
  * @param <T>   the type of the value which is valid for the {@link ChannelOption}
  */
 public class ChannelOption<T> extends AbstractConstant<ChannelOption<T>> {
 
+    /**
+     * {@link Constant}是一个单例，支持{@code ==}操作符的安全比较，由{@link ConstantPool}创建和管理。
+     * {@link ChannelOption}是{@link Constant}的子类。
+     */
     private static final ConstantPool<ChannelOption<Object>> pool = new ConstantPool<ChannelOption<Object>>() {
         @Override
         protected ChannelOption<Object> newConstant(int id, String name) {
-            return new ChannelOption<Object>(id, name);
+            return new ChannelOption<Object>(id, name); //创建的对象是不可变的
         }
     };
 
     /**
      * Returns the {@link ChannelOption} of the specified name.
+     * 获取指定name的{@link ChannelOption}。线程安全。
      */
     @SuppressWarnings("unchecked")
     public static <T> ChannelOption<T> valueOf(String name) {
