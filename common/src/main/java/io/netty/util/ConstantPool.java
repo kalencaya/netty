@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * A pool of {@link Constant}s.
+ * 一个{@link Constant}池。
  *
  * @param <T> the type of the constant
  */
@@ -113,6 +113,13 @@ public abstract class ConstantPool<T extends Constant<T>> {
         throw new IllegalArgumentException(String.format("'%s' is already in use", name));
     }
 
+    /**
+     * 像这种检测一般来说都是抽离出一个独立的工具类StringUtils之类的，但是这里依然提供了一个实现。
+     * 具体原因有可能是为了提供抛出的异常的错误信息。因为StringUtils一般是一个工具类，要求是无状态的，
+     * 也不应该与具体的逻辑有所牵连。
+     * @param name
+     * @return
+     */
     private static String checkNotNullAndNotEmpty(String name) {
         ObjectUtil.checkNotNull(name, "name");
 
