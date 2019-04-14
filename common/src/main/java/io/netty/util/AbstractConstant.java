@@ -18,10 +18,15 @@ package io.netty.util;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Base implementation of {@link Constant}.
+ * {@link Constant}的基类实现。
  */
 public abstract class AbstractConstant<T extends AbstractConstant<T>> implements Constant<T> {
 
+    /**
+     * 这里的四个变量都是final，代表不可变。但是uniqueIdGenerator是一个实例变量，是可以改变的。
+     * 但是从构造器可以看出，uniqueIdGenerator的主要作用是用来获取uniquifier的。
+     * 所以这种使用final变量的目的还是为了实现不可变的对象以保证线程安全。
+     */
     private static final AtomicLong uniqueIdGenerator = new AtomicLong();
     private final int id;
     private final String name;
