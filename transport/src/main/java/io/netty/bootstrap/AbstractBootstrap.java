@@ -41,11 +41,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * {@link AbstractBootstrap} is a helper class that makes it easy to bootstrap a {@link Channel}. It support
- * method-chaining to provide an easy way to configure the {@link AbstractBootstrap}.
+ * {@link AbstractBootstrap}是一个帮助类，用于简化启动{@link Channel}。它提供了链式方法调用以方便配置{@link AbstractBootstrap}。
  *
- * <p>When not used in a {@link ServerBootstrap} context, the {@link #bind()} methods are useful for connectionless
- * transports such as datagram (UDP).</p>
+ * <p>当不用于{@link ServerBootstrap}时，{@link #bind()}方法用于提供无连接的传输如UDP。</p>
  */
 public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C extends Channel> implements Cloneable {
 
@@ -53,12 +51,15 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     @SuppressWarnings("deprecation")
     private volatile ChannelFactory<? extends C> channelFactory;
     private volatile SocketAddress localAddress;
-    private final Map<ChannelOption<?>, Object> options = new LinkedHashMap<ChannelOption<?>, Object>();
-    private final Map<AttributeKey<?>, Object> attrs = new LinkedHashMap<AttributeKey<?>, Object>();
+    //ChannelOption是一种特殊的单例常量，AttributeKey和ChannelOption及其类似，二者都是AbstractConstant的子类
+    private final Map<ChannelOption<?>, Object> options = new LinkedHashMap<ChannelOption<?>, Object>(); //ChannelOption是一种特殊的单例常量
+    private final Map<AttributeKey<?>, Object> attrs = new LinkedHashMap<AttributeKey<?>, Object>(); //AttributeKey是一种特殊的单例常量
     private volatile ChannelHandler handler;
 
     AbstractBootstrap() {
-        // Disallow extending from a different package.
+        // 默认访问级别，以禁止别的包的类继承。
+        // 这个类访问级别的控制很具匠心，因为面向对象一般是尽量隐藏细节，从public，protected，默认，private
+        // 类的影响范围越来越小，这里选择使用默认访问级别，以确保将来如果添加新的启动类只在当前包下。
     }
 
     AbstractBootstrap(AbstractBootstrap<B, C> bootstrap) {
@@ -66,7 +67,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         channelFactory = bootstrap.channelFactory;
         handler = bootstrap.handler;
         localAddress = bootstrap.localAddress;
-        synchronized (bootstrap.options) {
+        synchronized (bootstrap.options) {  //上锁防止使用bootstrap创建的时候bootstrap又加入了新的配置项
             options.putAll(bootstrap.options);
         }
         synchronized (bootstrap.attrs) {
@@ -316,7 +317,7 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             return promise;
         }
     }
-
+    //初始化，注册Channel
     final ChannelFuture initAndRegister() {
         Channel channel = null;
         try {
@@ -333,6 +334,8 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
             return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
         }
         //register方法最后调用的是nio的注册api: selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
+        //将Channel注册到EventLoop中，group()返回的是MultiThreadEventLoopGroup
+        //EventLoop的类型是DefaultEventLoop
         ChannelFuture regFuture = config().group().register(channel);
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {
