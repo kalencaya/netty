@@ -90,9 +90,8 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
     }
 
     /**
-     * Allow to specify a {@link ChannelOption} which is used for the {@link Channel} instances once they get created
-     * (after the acceptor accepted the {@link Channel}). Use a value of {@code null} to remove a previous set
-     * {@link ChannelOption}.
+     * 允许指定一个{@link ChannelOption}，用于{@link Channel}实例创建。在acceptor接受{@link Channel}之前生效，如果value为
+     * {@code null}，那么会移除这个{@link ChannelOption}。
      */
     public <T> ServerBootstrap childOption(ChannelOption<T> childOption, T value) {
         if (childOption == null) {
@@ -111,8 +110,8 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
     }
 
     /**
-     * Set the specific {@link AttributeKey} with the given value on every child {@link Channel}. If the value is
-     * {@code null} the {@link AttributeKey} is removed
+     * 为每个子{@link Channel}设置{@link AttributeKey}，如果value为{@code null}，那么{@link AttributeKey}会被删除。
+     * 那么为什么这个方法实现没有使用锁呢？？
      */
     public <T> ServerBootstrap childAttr(AttributeKey<T> childKey, T value) {
         if (childKey == null) {
@@ -127,7 +126,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
     }
 
     /**
-     * Set the {@link ChannelHandler} which is used to serve the request for the {@link Channel}'s.
+     * 设置处理{@link Channel}收到的请求的{@link ChannelHandler}。
      */
     public ServerBootstrap childHandler(ChannelHandler childHandler) {
         if (childHandler == null) {
