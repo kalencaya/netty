@@ -27,7 +27,7 @@ import java.net.SocketAddress;
 import java.util.Map;
 
 /**
- * Exposes the configuration of an {@link AbstractBootstrap}.
+ * 暴露{@link AbstractBootstrap}的配置。
  */
 public abstract class AbstractBootstrapConfig<B extends AbstractBootstrap<B, C>, C extends Channel> {
 
