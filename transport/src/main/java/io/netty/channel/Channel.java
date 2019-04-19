@@ -194,9 +194,8 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
     Channel flush();
 
     /**
-     * <em>Unsafe</em> operations that should <em>never</em> be called from user-code. These methods
-     * are only provided to implement the actual transport, and must be invoked from an I/O thread except for the
-     * following methods:
+     * <em>Unsafe</em>操作永远<em>不要</em>被用户代码调用。这些方法仅用来提供底层的传输实现，仅可以被I/O线程和下面这些方法
+     * 调取：
      * <ul>
      *   <li>{@link #localAddress()}</li>
      *   <li>{@link #remoteAddress()}</li>
@@ -209,12 +208,14 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
     interface Unsafe {
 
         /**
+         * 返回分配的{@link RecvByteBufAllocator.Handle}，它通常在接收数据的时候分配{@link ByteBuf}。
          * Return the assigned {@link RecvByteBufAllocator.Handle} which will be used to allocate {@link ByteBuf}'s when
          * receiving data.
          */
         RecvByteBufAllocator.Handle recvBufAllocHandle();
 
         /**
+         * 如果绑定了local，那么就代表这是个UDP服务端，没绑定就代表这是个UDP客户端？？？
          * Return the {@link SocketAddress} to which is bound local or
          * {@code null} if none.
          */
@@ -227,41 +228,35 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
         SocketAddress remoteAddress();
 
         /**
-         * Register the {@link Channel} of the {@link ChannelPromise} and notify
-         * the {@link ChannelFuture} once the registration was complete.
+         * 注册{@link ChannelPromise}的{@link Channel}，注册完成通知{@link ChannelFuture}
          */
         void register(EventLoop eventLoop, ChannelPromise promise);
 
         /**
-         * Bind the {@link SocketAddress} to the {@link Channel} of the {@link ChannelPromise} and notify
-         * it once its done.
+         * 绑定{@link SocketAddress}到{@link ChannelPromise}的{@link Channel}，完成时发出通知。
+         * 调用此方法表明是创建一个UDP服务端
          */
         void bind(SocketAddress localAddress, ChannelPromise promise);
 
         /**
-         * Connect the {@link Channel} of the given {@link ChannelFuture} with the given remote {@link SocketAddress}.
-         * If a specific local {@link SocketAddress} should be used it need to be given as argument. Otherwise just
-         * pass {@code null} to it.
-         *
-         * The {@link ChannelPromise} will get notified once the connect operation was complete.
+         * 连接提供的{@link ChannelFuture}的{@link Channel}和远端{@link SocketAddress}。
+         * 如果要指定本地{@link SocketAddress}，需要作为参数传入，不需要指定可传入{@code null}。
+         * 连接操作完成通知{@link ChannelPromise}。
          */
         void connect(SocketAddress remoteAddress, SocketAddress localAddress, ChannelPromise promise);
 
         /**
-         * Disconnect the {@link Channel} of the {@link ChannelFuture} and notify the {@link ChannelPromise} once the
-         * operation was complete.
+         * 断开{@link ChannelFuture}的{@link Channel}的连接，操作完成通知{@link ChannelPromise}。
          */
         void disconnect(ChannelPromise promise);
 
         /**
-         * Close the {@link Channel} of the {@link ChannelPromise} and notify the {@link ChannelPromise} once the
-         * operation was complete.
+         * 关闭{@link ChannelFuture}的{@link Channel}，操作完成通知{@link ChannelPromise}。
          */
         void close(ChannelPromise promise);
 
         /**
-         * Closes the {@link Channel} immediately without firing any events.  Probably only useful
-         * when registration attempt failed.
+         * 立即关闭{@link Channel}，不做任何事件通知。仅在{@link Channel}注册失败的时候有用。
          */
         void closeForcibly();
 
