@@ -261,28 +261,35 @@ public interface Channel extends AttributeMap, ChannelOutboundInvoker, Comparabl
         void closeForcibly();
 
         /**
-         * Deregister the {@link Channel} of the {@link ChannelPromise} from {@link EventLoop} and notify the
-         * {@link ChannelPromise} once the operation was complete.
+         * 把{@link ChannelPromise}的{@link Channel}移除对{@link EventLoop}的注册，操作完成通知
+         * {@link ChannelPromise}。
          */
         void deregister(ChannelPromise promise);
 
         /**
+         * 定时调度一个读操作，填充{@link ChannelPipeline}的首个{@link ChannelInboundHandler}
+         * 的进栈缓冲池。如果已经有读操作在等待，那么这个方法直接返回。
          * Schedules a read operation that fills the inbound buffer of the first {@link ChannelInboundHandler} in the
          * {@link ChannelPipeline}.  If there's already a pending read operation, this method does nothing.
          */
         void beginRead();
 
         /**
+         * 定时调度一个写操作。
          * Schedules a write operation.
          */
         void write(Object msg, ChannelPromise promise);
 
         /**
+         * 通过{@link #write(Object, ChannelPromise)}刷出所有调度的写操作。
          * Flush out all write operations scheduled via {@link #write(Object, ChannelPromise)}.
          */
         void flush();
 
         /**
+         * 返回一个特殊的ChannelPromise，可以反复使用传递给{@link Unsafe}的操作。
+         * 它永远不能接受成功或错误通知，因此它仅仅是一个操作的占位符，操作接受一个{@link ChannelPromise}
+         * 作为参数但是并不想接收通知。
          * Return a special ChannelPromise which can be reused and passed to the operations in {@link Unsafe}.
          * It will never be notified of a success or error and so is only a placeholder for operations
          * that take a {@link ChannelPromise} as argument but for which you not want to get notified.
