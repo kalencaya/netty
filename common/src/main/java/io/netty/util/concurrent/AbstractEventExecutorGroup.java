@@ -28,6 +28,7 @@ import static io.netty.util.concurrent.AbstractEventExecutor.*;
 
 /**
  * Abstract base class for {@link EventExecutorGroup} implementations.
+ * {@link EventExecutorGroup}的基础抽象类实现。
  */
 public abstract class AbstractEventExecutorGroup implements EventExecutorGroup {
     @Override
@@ -87,6 +88,8 @@ public abstract class AbstractEventExecutorGroup implements EventExecutorGroup {
         return Collections.emptyList();
     }
 
+    // 这里实现的是java原生的ExecuterService的方法，返回的类型也是Java原生的Future，为什么没有返回Netty自己的
+    // Future呢？
     @Override
     public <T> List<java.util.concurrent.Future<T>> invokeAll(Collection<? extends Callable<T>> tasks)
             throws InterruptedException {
