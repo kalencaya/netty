@@ -18,6 +18,9 @@ package io.netty.util.concurrent;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadFactory;
 
+/**
+ * 每个任务都分配一个线程的线程池。
+ */
 public final class ThreadPerTaskExecutor implements Executor {
     private final ThreadFactory threadFactory;
 
