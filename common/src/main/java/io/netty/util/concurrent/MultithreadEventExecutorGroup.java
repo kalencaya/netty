@@ -27,6 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Abstract base class for {@link EventExecutorGroup} implementations that handles their tasks with multiple threads at
  * the same time.
+ * {@link EventExecutorGroup}的抽象基类实现，它使用多线程进行任务处理。
  */
 public abstract class MultithreadEventExecutorGroup extends AbstractEventExecutorGroup {
 
@@ -71,7 +72,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
         if (nThreads <= 0) {
             throw new IllegalArgumentException(String.format("nThreads: %d (expected: > 0)", nThreads));
         }
-
+        //创建执行器
         if (executor == null) {
             executor = new ThreadPerTaskExecutor(newDefaultThreadFactory());
         }
@@ -82,7 +83,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             boolean success = false;
             try {
                 children[i] = newChild(executor, args);
-                success = true;
+                success = true;  //确保每个执行器都创建成功
             } catch (Exception e) {
                 // TODO: Think about if this is a good exception type
                 throw new IllegalStateException("failed to create a child event loop", e);
@@ -109,7 +110,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
         }
 
         chooser = chooserFactory.newChooser(children);
-
+        //这是什么意思啊？每次都增加，那么很快就会到达且超过children.length
         final FutureListener<Object> terminationListener = new FutureListener<Object>() {
             @Override
             public void operationComplete(Future<Object> future) throws Exception {
@@ -129,7 +130,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
     }
 
     protected ThreadFactory newDefaultThreadFactory() {
-        return new DefaultThreadFactory(getClass());
+        return new DefaultThreadFactory(getClass()); //使用传入的类名来生成线程池线程的名字
     }
 
     @Override
