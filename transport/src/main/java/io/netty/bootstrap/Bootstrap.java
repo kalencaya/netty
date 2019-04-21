@@ -43,6 +43,7 @@ import java.util.Map.Entry;
  * A {@link Bootstrap} that makes it easy to bootstrap a {@link Channel} to use
  * for clients.
  *
+ * 使用bind方法可以使用UDP，使用TCP可以使用connect()方法
  * <p>The {@link #bind()} methods are useful in combination with connectionless transports such as datagram (UDP).
  * For regular TCP connections, please use the provided {@link #connect()} methods.</p>
  */
@@ -184,6 +185,8 @@ public class Bootstrap extends AbstractBootstrap<Bootstrap, Channel> {
                     } else {
                         // Registration was successful, so set the correct executor to use.
                         // See https://github.com/netty/netty/issues/2586
+                        //因为初始化和注册Channel是一个异步的操作，而这是一个事件监听处理器，因为初始化和注册异步操作
+                        //没有及时完成，才注册了这个事件。但是当初始化和注册成功后的第一件事是调用#registered()方法？？？
                         promise.registered();
                         doResolveAndConnect0(channel, remoteAddress, localAddress, promise);
                     }
@@ -196,7 +199,7 @@ public class Bootstrap extends AbstractBootstrap<Bootstrap, Channel> {
     private ChannelFuture doResolveAndConnect0(final Channel channel, SocketAddress remoteAddress,
                                                final SocketAddress localAddress, final ChannelPromise promise) {
         try {
-            final EventLoop eventLoop = channel.eventLoop();
+            final EventLoop eventLoop = channel.eventLoop(); //一个eventLoop可以注册多个channel
             final AddressResolver<SocketAddress> resolver = this.resolver.getResolver(eventLoop);
 
             if (!resolver.isSupported(remoteAddress) || resolver.isResolved(remoteAddress)) {
