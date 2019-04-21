@@ -26,6 +26,13 @@ import java.util.concurrent.TimeUnit;
  * via its {@link #next()} method. Besides this, it is also responsible for handling their
  * life-cycle and allows shutting them down in a global fashion.
  *
+ * {@link EventExecutorGroup}负责提供{@link EventExecutor}，可通过{@link #next()}方法获取。
+ * 除此之外，{@link EventExecutorGroup}负责管理提供的{@link EventExecutor}生命周期，提供全局的方法
+ * 关闭{@link EventExecutor}。
+ *
+ * {@link EventExecutorGroup}继承的接口都是java的原生接口，换句话说{@link EventExecutorGroup}是
+ * Netty的EventLoop的最顶级接口。
+ *
  */
 public interface EventExecutorGroup extends ScheduledExecutorService, Iterable<EventExecutor> {
 
@@ -43,6 +50,9 @@ public interface EventExecutorGroup extends ScheduledExecutorService, Iterable<E
     Future<?> shutdownGracefully();
 
     /**
+     * 通知executor调用者想要关闭executor。一旦这个方法调用{@link #isShuttingDown()}返回true，executor开始准备
+     * 关闭自身。不像{@link #shutdown()}方法，优雅关闭方法确保在<i>'the quiet period'</i>（通常是几秒钟）没有任务会提交。
+     * 如果任务在<i>'the quiet period'</i>期间提交，它会确保这个任务会被接受，<i>'the quiet period'</i>重新开始。
      * Signals this executor that the caller wants the executor to be shut down.  Once this method is called,
      * {@link #isShuttingDown()} starts to return {@code true}, and the executor prepares to shut itself down.
      * Unlike {@link #shutdown()}, graceful shutdown ensures that no tasks are submitted for <i>'the quiet period'</i>
@@ -61,6 +71,8 @@ public interface EventExecutorGroup extends ScheduledExecutorService, Iterable<E
     /**
      * Returns the {@link Future} which is notified when all {@link EventExecutor}s managed by this
      * {@link EventExecutorGroup} have been terminated.
+     * 当{@link EventExecutorGroup}管理的所有{@link EventExecutor}s都停止后，
+     * 返回被通知的{@link Future}
      */
     Future<?> terminationFuture();
 
@@ -79,13 +91,14 @@ public interface EventExecutorGroup extends ScheduledExecutorService, Iterable<E
     List<Runnable> shutdownNow();
 
     /**
+     * 返回{@link EventExecutorGroup}管理的一个{@link EventExecutor}s。
      * Returns one of the {@link EventExecutor}s managed by this {@link EventExecutorGroup}.
      */
     EventExecutor next();
 
     @Override
     Iterator<EventExecutor> iterator();
-
+    //返回的Future不是Java原生的java.util.concurrent包下的，而是Netty自己定义的，它继承了java.util.concurrent.Future。
     @Override
     Future<?> submit(Runnable task);
 
