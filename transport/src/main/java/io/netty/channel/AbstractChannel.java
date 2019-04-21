@@ -424,6 +424,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
     /**
      * {@link Unsafe} implementation which sub-classes must extend and use.
+     * {@link Unsafe}实现，子类必须继承和使用这个类。
      */
     protected abstract class AbstractUnsafe implements Unsafe {
 
@@ -431,11 +432,13 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         private RecvByteBufAllocator.Handle recvHandle;
         private boolean inFlush0;
         /** true if the channel has never been registered, false otherwise */
+        /** 如果channel已经注册，则为true，否则为false */
         private boolean neverRegistered = true;
 
         private void assertEventLoop() {
             //这里使用的是Java原生的断言，Java原生的断言默认是关闭的，需要自己手动开启，否则这里是不执行的。
-            assert !registered || eventLoop.inEventLoop(); //最简单的实现就是Thread.currentThread() == this.thread
+            //判断是否在当前eventLoop中是Thread.currentThread() == this.thread
+            assert !registered || eventLoop.inEventLoop();
         }
 
         @Override
@@ -503,9 +506,12 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             try {
                 // check if the channel is still open as it could be closed in the mean time when the register
                 // call was outside of the eventLoop
+                // 检测是否channel是否仍然开启，因为当注册调用不再eventLoop范围内时可能会被关闭。
+                // promise.setUncancellable()在promise已经撤销的时候才返回false
                 if (!promise.setUncancellable() || !ensureOpen(promise)) {
                     return;
                 }
+                //首次注册的时候neverRegistered为true，则firstRegistration为true
                 boolean firstRegistration = neverRegistered;
                 doRegister();
                 neverRegistered = false;
@@ -513,6 +519,8 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
                 // Ensure we call handlerAdded(...) before we actually notify the promise. This is needed as the
                 // user may already fire events through the pipeline in the ChannelFutureListener.
+                //确保在通知promise之前调用handlerAdded(...)方法。因为有可能
+                //已经在ChannelFutureListener通过pipeline通知过相应的事件。
                 pipeline.invokeHandlerAddedIfNeeded();
 
                 safeSetSuccess(promise);
@@ -559,7 +567,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
                         "address (" + localAddress + ") anyway as requested.");
             }
 
-            boolean wasActive = isActive();
+            boolean wasActive = isActive(); //Channel打开，且已经连接
             try {
                 doBind(localAddress);  //调用Java原生的绑定端口的API
             } catch (Throwable t) {
