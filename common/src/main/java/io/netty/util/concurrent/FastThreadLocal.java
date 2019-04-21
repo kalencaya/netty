@@ -38,6 +38,14 @@ import java.util.Set;
  * {@link ThreadLocal}.
  * </p>
  *
+ * {@link ThreadLocal}的一个变种，提供更高的访问性能。
+ * <p>{@link FastThreadLocal}内部使用数组的一个常量索引来查找变量，而不是使用hashcode和hashtable。尽管非常微小，但是它提供轻微的性能优势，
+ * 频繁的访问会积累很大的优势</p>
+ * <p>为了充分利用这个线程绑定变量，用户线程一定要是{@link FastThreadLocalThread}或者子类。因此所有
+ * {@link DefaultThreadFactory}创建的线程都是{@link FastThreadLocalThread}</p>
+ * <p>注意速度的优势只有在{@link FastThreadLocalThread}线程在起效，因为它需要一个特殊变量存储必要的状态。任何别的种类的线程的访问都会失败，
+ * 转到常规的{@link ThreadLocal}</p>
+ *
  * @param <V> the type of the thread-local variable
  * @see ThreadLocal
  */
