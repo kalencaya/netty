@@ -68,6 +68,7 @@ public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutor
         super(nThreads == 0 ? DEFAULT_EVENT_LOOP_THREADS : nThreads, executor, chooserFactory, args);
     }
 
+    //为什么要用最大优先级呢？即使Java的优先级是个摆设。
     @Override
     protected ThreadFactory newDefaultThreadFactory() {
         return new DefaultThreadFactory(getClass(), Thread.MAX_PRIORITY);
@@ -78,7 +79,7 @@ public abstract class MultithreadEventLoopGroup extends MultithreadEventExecutor
         return (EventLoop) super.next();
     }
 
-    //覆盖弗雷的方法，把返回值类型换成了EventLoop
+    //覆盖父类的方法，把返回值类型换成了EventLoop
     @Override
     protected abstract EventLoop newChild(Executor executor, Object... args) throws Exception;
 
