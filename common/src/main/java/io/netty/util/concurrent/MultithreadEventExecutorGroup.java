@@ -115,7 +115,7 @@ public abstract class MultithreadEventExecutorGroup extends AbstractEventExecuto
             @Override
             public void operationComplete(Future<Object> future) throws Exception {
                 if (terminatedChildren.incrementAndGet() == children.length) {
-                    terminationFuture.setSuccess(null);
+                    terminationFuture.setSuccess(null); //只所以设置为null，是因为监听器不在意具体结果
                 }
             }
         };
