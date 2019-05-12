@@ -238,6 +238,11 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
         return pipeline.disconnect();
     }
 
+    /**
+     * close()是outbound事件，调用pipeline开始传递close事件
+     * 首先从tail开始处理，最后由head的UnSafe处理
+     * @return
+     */
     @Override
     public ChannelFuture close() {
         return pipeline.close();
