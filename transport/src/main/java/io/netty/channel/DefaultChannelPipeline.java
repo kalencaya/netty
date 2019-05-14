@@ -47,9 +47,12 @@ public class DefaultChannelPipeline implements ChannelPipeline {
 
     static final InternalLogger logger = InternalLoggerFactory.getInstance(DefaultChannelPipeline.class);
 
-    private static final String HEAD_NAME = generateName0(HeadContext.class);
-    private static final String TAIL_NAME = generateName0(TailContext.class);
+    private static final String HEAD_NAME = generateName0(HeadContext.class); //HeadContext#0
+    private static final String TAIL_NAME = generateName0(TailContext.class); //TailContext#0
 
+    /**
+     * 名字({@link AbstractChannelHandlerContext#name})缓存 ，基于 ThreadLocal ，用于生成在线程中唯一的名字。
+     */
     private static final FastThreadLocal<Map<Class<?>, String>> nameCaches =
             new FastThreadLocal<Map<Class<?>, String>>() {
         @Override
@@ -106,7 +109,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         if (handle == null) {
             handle = channel.config().getMessageSizeEstimator().newHandle();
             if (!ESTIMATOR.compareAndSet(this, null, handle)) {
-                handle = estimatorHandle;
+                handle = estimatorHandle; // CAS失败，则已经有其他线程更新成功，直接使用即可
             }
         }
         return handle;
@@ -202,28 +205,32 @@ public class DefaultChannelPipeline implements ChannelPipeline {
             checkMultiplicity(handler);
 
             newCtx = newContext(group, filterName(name, handler), handler);
-
+            // 插入双向链表
             addLast0(newCtx);
 
             // If the registered is false it means that the channel was not registered on an eventLoop yet.
             // In this case we add the context to the pipeline and add a task that will call
             // ChannelHandler.handlerAdded(...) once the channel is registered.
+            // 如果此时channel还没有注册到eventLoop上，就需要设置一个回调，当channel注册完成后执行回调
             if (!registered) {
-                newCtx.setAddPending();
-                callHandlerCallbackLater(newCtx, true);
+                newCtx.setAddPending(); //设置状态为准备添加中
+                callHandlerCallbackLater(newCtx, true); //添加回调
                 return this;
             }
 
+            // 不在eventloop线程中，提交到eventloop中，执行回调方法
             EventExecutor executor = newCtx.executor();
             if (!executor.inEventLoop()) {
                 callHandlerAddedInEventLoop(newCtx, executor);
                 return this;
             }
         }
+        // ChannelHandler added回调事件
         callHandlerAdded0(newCtx);
         return this;
     }
 
+    // 典型地插入双向链表实现，先连接，后断开
     private void addLast0(AbstractChannelHandlerContext newCtx) {
         AbstractChannelHandlerContext prev = tail.prev;
         newCtx.prev = prev;
@@ -964,6 +971,11 @@ public class DefaultChannelPipeline implements ChannelPipeline {
         return tail.disconnect();
     }
 
+    /**
+     * pipeline收到close事件，直接调用tail的close方法，传递给close方法
+     * 最后由head关闭
+     * @return
+     */
     @Override
     public final ChannelFuture close() {
         return tail.close();
@@ -1130,7 +1142,7 @@ public class DefaultChannelPipeline implements ChannelPipeline {
     }
 
     private void callHandlerCallbackLater(AbstractChannelHandlerContext ctx, boolean added) {
-        assert !registered;
+        assert !registered; // 只有Channel未注册到eventloop，才会引发设置回调
 
         PendingHandlerCallback task = added ? new PendingHandlerAddedTask(ctx) : new PendingHandlerRemovedTask(ctx);
         PendingHandlerCallback pending = pendingHandlerCallbackHead;

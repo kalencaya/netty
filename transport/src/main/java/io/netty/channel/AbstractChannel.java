@@ -704,10 +704,12 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
 
         private void close(final ChannelPromise promise, final Throwable cause,
                            final ClosedChannelException closeCause, final boolean notify) {
+            // 设置为不可撤销
             if (!promise.setUncancellable()) {
                 return;
             }
-
+            // todo 没看懂？关闭应该只会调用一次，这样处理很明显地是为了多线程
+            // 环境下有多个线程同时执行关闭操作，那么很有必要把closeInitiated设置为violate
             if (closeInitiated) {
                 if (closeFuture.isDone()) {
                     // Closed already.
@@ -727,6 +729,7 @@ public abstract class AbstractChannel extends DefaultAttributeMap implements Cha
             closeInitiated = true;
 
             final boolean wasActive = isActive();
+            // 标记outboundBuffer为null，以防止添加新的消息到outboundBuffer中
             final ChannelOutboundBuffer outboundBuffer = this.outboundBuffer;
             this.outboundBuffer = null; // Disallow adding any messages and flushes to outboundBuffer.
             Executor closeExecutor = prepareToClose();

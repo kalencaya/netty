@@ -589,6 +589,7 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
             return promise;
         }
 
+        // 在channelhandler链表中从tail到head遍历寻找第一个outboundhandler
         final AbstractChannelHandlerContext next = findContextOutbound();
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
@@ -606,6 +607,9 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
     }
 
     private void invokeClose(ChannelPromise promise) {
+        // invokeHandler()主要检测是否调用handlerAdded()方法，因为只有在
+        // handler加入了pipeline，且通知了有handler添加进来才算是有效
+        // 否则只是单纯地调用close(ChannelPromise)，重复循环一次
         if (invokeHandler()) {
             try {
                 ((ChannelOutboundHandler) handler()).close(this, promise);
@@ -946,9 +950,11 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
         assert updated; // This should always be true as it MUST be called before setAddComplete() or setRemoved().
     }
 
+    // 调用handler added事件 回调
     final void callHandlerAdded() throws Exception {
         // We must call setAddComplete before calling handlerAdded. Otherwise if the handlerAdded method generates
         // any pipeline events ctx.handler() will miss them because the state will not allow it.
+        // 先设置handler状态为添加完成
         if (setAddComplete()) {
             handler().handlerAdded(this);
         }

@@ -35,6 +35,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 /**
  * {@link Bootstrap} sub-class which allows easy bootstrap of {@link ServerChannel}
@@ -43,6 +44,7 @@ import java.util.concurrent.TimeUnit;
 public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerChannel> {
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ServerBootstrap.class);
+
 
     private final Map<ChannelOption<?>, Object> childOptions = new LinkedHashMap<ChannelOption<?>, Object>();
     private final Map<AttributeKey<?>, Object> childAttrs = new LinkedHashMap<AttributeKey<?>, Object>();
@@ -208,6 +210,21 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         return new Map.Entry[size];
     }
 
+    private volatile int test = 0; // 必须是volatile todo 测试代码，待删除
+    public static void main(String[] args){
+        // 想测试原子更新器的速度有多快
+        ServerBootstrap bootstrap = new ServerBootstrap();
+        System.out.println(System.currentTimeMillis());
+        AtomicIntegerFieldUpdater atomicIntegerFieldUpdater = AtomicIntegerFieldUpdater.newUpdater(ServerBootstrap.class, "test");
+        System.out.println(System.currentTimeMillis());
+        atomicIntegerFieldUpdater.compareAndSet(bootstrap, 1, 0);
+        System.out.println(System.currentTimeMillis());
+        int test = atomicIntegerFieldUpdater.get(bootstrap);
+        System.out.println(System.currentTimeMillis());
+
+    }
+
+    // 继承ChannelInboundHandlerAdapter，说明处理的是Inbound事件
     private static class ServerBootstrapAcceptor extends ChannelInboundHandlerAdapter {
 
         private final EventLoopGroup childGroup;
@@ -229,6 +246,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             // not be able to load the class because of the file limit it already reached.
             //
             // See https://github.com/netty/netty/issues/1328
+            // 在exceptionCaught()中使用。exceptionCaught()中会先关闭autoRead，然后使用这个任务重新设置autoRead
             enableAutoReadTask = new Runnable() {
                 @Override
                 public void run() {
@@ -236,6 +254,8 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
                 }
             };
         }
+
+
 
         @Override
         @SuppressWarnings("unchecked")
@@ -250,6 +270,8 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
                 child.attr((AttributeKey<Object>) e.getKey()).set(e.getValue());
             }
 
+            // 这里和ServerBootstrap和Bootstrap注册的过程类似，服务端接受客户端连接然后把客户端注册到eventloop上
+            // 最后调用的也是Unsafe的方法
             try {
                 childGroup.register(child).addListener(new ChannelFutureListener() {
                     @Override

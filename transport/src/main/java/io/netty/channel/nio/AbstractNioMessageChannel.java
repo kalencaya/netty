@@ -72,34 +72,39 @@ public abstract class AbstractNioMessageChannel extends AbstractNioChannel {
             try {
                 try {
                     do {
+                        // 读取客户端的连接到 readBuf 中，对于NioServerSocketChannel，每次只会接受一个连接
                         int localRead = doReadMessages(readBuf);
+                        // 没有客户端连接
                         if (localRead == 0) {
                             break;
                         }
+                        // 读取出错
                         if (localRead < 0) {
                             closed = true;
                             break;
                         }
-
+                        // 读取消息数量 + localRead
                         allocHandle.incMessagesRead(localRead);
-                    } while (allocHandle.continueReading());
+                    } while (allocHandle.continueReading()); // 循环判断是否继续读取
                 } catch (Throwable t) {
-                    exception = t;
+                    exception = t; // 记录异常
                 }
 
+                // 循环 readBuf链表，触发Channel的read事件到 pipeline 中
                 int size = readBuf.size();
                 for (int i = 0; i < size; i ++) {
                     readPending = false;
-                    pipeline.fireChannelRead(readBuf.get(i));
+                    pipeline.fireChannelRead(readBuf.get(i)); //参数是客户端连接 NioSocketChannel
                 }
                 readBuf.clear();
                 allocHandle.readComplete();
                 pipeline.fireChannelReadComplete();
 
+                // 发现有记录的异常
                 if (exception != null) {
-                    closed = closeOnReadError(exception);
+                    closed = closeOnReadError(exception); // 判断是否要关闭
 
-                    pipeline.fireExceptionCaught(exception);
+                    pipeline.fireExceptionCaught(exception); // 传播异常到pipeline
                 }
 
                 if (closed) {

@@ -114,6 +114,7 @@ public abstract class DefaultMaxMessagesRecvByteBufAllocator implements MaxMessa
             return alloc.ioBuffer(guess());
         }
 
+        // 为了抽象，所以使用了message-消息的概念
         @Override
         public final void incMessagesRead(int amt) {
             totalMessages += amt;
