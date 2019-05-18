@@ -30,23 +30,17 @@ import java.nio.charset.Charset;
 import java.nio.charset.UnsupportedCharsetException;
 
 /**
- * A random and sequential accessible sequence of zero or more bytes (octets).
- * This interface provides an abstract view for one or more primitive byte
- * arrays ({@code byte[]}) and {@linkplain ByteBuffer NIO buffers}.
+ * 一个支持随机顺序访问的8位byte序列。
+ * 这个接口提供了一或多个基本byte数组(byte[])和NIO buffers(ByteBuffer)的抽象视图。
  *
- * <h3>Creation of a buffer</h3>
+ * <h3>buffer创建</h3>
  *
- * It is recommended to create a new buffer using the helper methods in
- * {@link Unpooled} rather than calling an individual implementation's
- * constructor.
+ * 创建buffer推荐使用Unpooled工具类方法而不是直接使用构造器创建。
  *
- * <h3>Random Access Indexing</h3>
+ * <h3>随机访问索引</h3>
  *
- * Just like an ordinary primitive byte array, {@link ByteBuf} uses
- * <a href="http://en.wikipedia.org/wiki/Zero-based_numbering">zero-based indexing</a>.
- * It means the index of the first byte is always {@code 0} and the index of the last byte is
- * always {@link #capacity() capacity - 1}.  For example, to iterate all bytes of a buffer, you
- * can do the following, regardless of its internal implementation:
+ * 类似普通基本byte数组，ByteBuf使用<a href="http://en.wikipedia.org/wiki/Zero-based_numbering">基于0的索引</a>。
+ * 这意味着首个byte索引为0， 最后一个byte的索引是capacity -1。例如，遍历buffer的所有bytes：
  *
  * <pre>
  * {@link ByteBuf} buffer = ...;
@@ -56,13 +50,15 @@ import java.nio.charset.UnsupportedCharsetException;
  * }
  * </pre>
  *
- * <h3>Sequential Access Indexing</h3>
+ * <h3>顺序访问索引</h3>
  *
- * {@link ByteBuf} provides two pointer variables to support sequential
- * read and write operations - {@link #readerIndex() readerIndex} for a read
- * operation and {@link #writerIndex() writerIndex} for a write operation
- * respectively.  The following diagram shows how a buffer is segmented into
- * three areas by the two pointers:
+ * ByteBuf提供两个指示变量支持顺序读和写操作：
+ *   readIndex 读操作，
+ *   writeIndex 写操作
+ * 下表展示buffer使用这个两个指示划分成三个区域：
+ *
+ *
+ * <h3>Sequential Access Indexing</h3>
  *
  * <pre>
  *      +-------------------+------------------+------------------+
@@ -73,21 +69,14 @@ import java.nio.charset.UnsupportedCharsetException;
  *      0      <=      readerIndex   <=   writerIndex    <=    capacity
  * </pre>
  *
- * <h4>Readable bytes (the actual content)</h4>
+ * <h4>Readable bytes (可读的bytes，真正的内容)</h4>
  *
- * This segment is where the actual data is stored.  Any operation whose name
- * starts with {@code read} or {@code skip} will get or skip the data at the
- * current {@link #readerIndex() readerIndex} and increase it by the number of
- * read bytes.  If the argument of the read operation is also a
- * {@link ByteBuf} and no destination index is specified, the specified
- * buffer's {@link #writerIndex() writerIndex} is increased together.
- * <p>
- * If there's not enough content left, {@link IndexOutOfBoundsException} is
- * raised.  The default value of newly allocated, wrapped or copied buffer's
- * {@link #readerIndex() readerIndex} is {@code 0}.
+ * 这个区域存储真正的数据。任何以read或skip为前缀的操作都会获取或跳过当前readIndex的数据，然后
+ * readIndex加上读取bytes的数量。如果读取操作的参数是ByteBuf，且没指定终止索引，指定buffer的writeIndex也会一起增加。
+ * 如果没有足够可读取的内容，抛出IndexOutOfBoundsException。新分配、包装或复制的buffer的readIndex默认值是0。
  *
  * <pre>
- * // Iterates the readable bytes of a buffer.
+ * // 遍历buffer的可读bytes
  * {@link ByteBuf} buffer = ...;
  * while (buffer.isReadable()) {
  *     System.out.println(buffer.readByte());
@@ -96,13 +85,11 @@ import java.nio.charset.UnsupportedCharsetException;
  *
  * <h4>Writable bytes</h4>
  *
- * This segment is a undefined space which needs to be filled.  Any operation
- * whose name starts with {@code write} will write the data at the current
- * {@link #writerIndex() writerIndex} and increase it by the number of written
- * bytes.  If the argument of the write operation is also a {@link ByteBuf},
- * and no source index is specified, the specified buffer's
- * {@link #readerIndex() readerIndex} is increased together.
+ * 这个区域是需要填充的未定义空间。任何以write为前缀的操作会在当前writeIndex写入数据，writeIndex然后加上写入
+ * bytes数目。如果write操作的参数是ByteBuf，且没指定开始索引，指定buffer的readIndex也会一起增加。
  * <p>
+ *
+ *
  * If there's not enough writable bytes left, {@link IndexOutOfBoundsException}
  * is raised.  The default value of newly allocated buffer's
  * {@link #writerIndex() writerIndex} is {@code 0}.  The default value of
