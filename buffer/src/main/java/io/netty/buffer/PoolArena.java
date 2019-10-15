@@ -38,20 +38,48 @@ abstract class PoolArena<T> implements PoolArenaMetric {
         Normal
     }
 
+    /**
+     * {@link #tinySubpagePools} 数组的大小
+     *
+     * 默认为 32
+     */
     static final int numTinySubpagePools = 512 >>> 4;
 
     final PooledByteBufAllocator parent;
 
+    /** 满二叉树的高度。默认为 11  */
     private final int maxOrder;
+
+    /** Page 大小，默认 8KB = 8192B  */
     final int pageSize;
+
+    /** 从 1 开始左移到 {@link #pageSize} 的位数。默认 13 ，1 << 13 = 8192 */
     final int pageShifts;
+
+    /** Chunk 内存块占用大小。默认为 16M = 16 * 1024 */
     final int chunkSize;
+
+    /** 判断分配请求内存是否为 Tiny/Small ，即分配 Subpage 内存块 */
     final int subpageOverflowMask;
+
+    /**
+     * {@link #smallSubpagePools} 数组的大小
+     *
+     * 默认为 23
+     */
     final int numSmallSubpagePools;
+
+    /** 对齐基准 */
     final int directMemoryCacheAlignment;
+
+    /**
+     * {@link #directMemoryCacheAlignment} 掩码
+     *
+     * 用于内存对齐
+     */
     final int directMemoryCacheAlignmentMask;
-    private final PoolSubpage<T>[] tinySubpagePools;
-    private final PoolSubpage<T>[] smallSubpagePools;
+    private final PoolSubpage<T>[] tinySubpagePools; //Subpage双向链表
+    private final PoolSubpage<T>[] smallSubpagePools; //Subpage双向链表
 
     private final PoolChunkList<T> q050;
     private final PoolChunkList<T> q025;
@@ -92,7 +120,7 @@ abstract class PoolArena<T> implements PoolArenaMetric {
         this.chunkSize = chunkSize;
         directMemoryCacheAlignment = cacheAlignment;
         directMemoryCacheAlignmentMask = cacheAlignment - 1;
-        subpageOverflowMask = ~(pageSize - 1);
+        subpageOverflowMask = ~(pageSize - 1); //这个操作要记下来
         tinySubpagePools = newSubpagePoolArray(numTinySubpagePools);
         for (int i = 0; i < tinySubpagePools.length; i ++) {
             tinySubpagePools[i] = newSubpagePoolHead(pageSize);

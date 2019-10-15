@@ -72,6 +72,7 @@ public abstract class AbstractByteBuf extends ByteBuf {
     private int markedReaderIndex;
     private int markedWriterIndex;
     private int maxCapacity;
+    //这里没有capacity的定义，是因为ByteBuf根据是heap还是direct实现有所不同
 
     protected AbstractByteBuf(int maxCapacity) {
         checkPositiveOrZero(maxCapacity, "maxCapacity");

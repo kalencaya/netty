@@ -68,7 +68,8 @@ public class ServerBootstrapTest {
         }
     }
 
-    @Test(timeout = 3000)
+//    @Test(timeout = 3000)
+    @Test
     public void testParentHandler() throws Exception {
         testParentHandler(false);
     }

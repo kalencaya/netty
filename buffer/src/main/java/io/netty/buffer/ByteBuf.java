@@ -237,6 +237,7 @@ public abstract class ByteBuf implements ReferenceCounted, Comparable<ByteBuf> {
 
     /**
      * Returns the number of bytes (octets) this buffer can contain.
+     * 返回这个buffer可以容纳的bytes(8位)数目
      */
     public abstract int capacity();
 
@@ -246,6 +247,8 @@ public abstract class ByteBuf implements ReferenceCounted, Comparable<ByteBuf> {
      * than the current capacity, the buffer is appended with unspecified data whose length is
      * {@code (newCapacity - currentCapacity)}.
      *
+     * 调整这个buffer的capacity。如果newCapacity少于当前capacity，这个buffer的内容会被截取。如果newCapacity大于
+     * 当前capacity，buffer会在后面追加响应的长度（newCapacity - currentCapacity）。
      * @throws IllegalArgumentException if the {@code newCapacity} is greater than {@link #maxCapacity()}
      */
     public abstract ByteBuf capacity(int newCapacity);
@@ -253,17 +256,21 @@ public abstract class ByteBuf implements ReferenceCounted, Comparable<ByteBuf> {
     /**
      * Returns the maximum allowed capacity of this buffer. This value provides an upper
      * bound on {@link #capacity()}.
+     * 返回这个buffer允许的最大capacity。这个值提供了capacity()的上限值。
      */
     public abstract int maxCapacity();
 
     /**
      * Returns the {@link ByteBufAllocator} which created this buffer.
+     * 返回创建这个buffer的ByteBufAllocator。
      */
     public abstract ByteBufAllocator alloc();
 
     /**
      * Returns the <a href="http://en.wikipedia.org/wiki/Endianness">endianness</a>
      * of this buffer.
+     *
+     * 返回这个buffer的<a href="http://en.wikipedia.org/wiki/Endianness">endianness</a>。
      *
      * @deprecated use the Little Endian accessors, e.g. {@code getShortLE}, {@code getIntLE}
      * instead of creating a buffer with swapped {@code endianness}.

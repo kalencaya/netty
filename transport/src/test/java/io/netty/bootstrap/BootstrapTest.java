@@ -216,7 +216,8 @@ public class BootstrapTest {
         }
     }
 
-    @Test(expected = ConnectException.class, timeout = 10000)
+//    @Test(expected = ConnectException.class, timeout = 10000)
+    @Test(expected = ConnectException.class)
     public void testLateRegistrationConnect() throws Exception {
         EventLoopGroup group = new DelayedEventLoopGroup();
         try {

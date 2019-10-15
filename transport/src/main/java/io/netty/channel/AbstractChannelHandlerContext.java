@@ -544,10 +544,12 @@ abstract class AbstractChannelHandlerContext extends DefaultAttributeMap
             // cancelled
             return promise;
         }
-
+        // 找到当前handler之后的下一个outboundhandler
         final AbstractChannelHandlerContext next = findContextOutbound();
         EventExecutor executor = next.executor();
         if (executor.inEventLoop()) {
+            // 因为对JDK原生的SocketChannel没有disconnect-reconnect概念和方法，但是
+            // UDP操作是有disconnect-reconnect概念，这里做了个区分，检测是否有disconnect方法
             // Translate disconnect to close if the channel has no notion of disconnect-reconnect.
             // So far, UDP/IP is the only transport that has such behavior.
             if (!channel().metadata().hasDisconnect()) {

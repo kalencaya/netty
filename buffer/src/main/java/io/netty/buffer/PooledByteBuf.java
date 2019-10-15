@@ -24,17 +24,18 @@ import java.nio.ByteOrder;
 
 abstract class PooledByteBuf<T> extends AbstractReferenceCountedByteBuf {
 
+    //Recycle处理器，用于回收对象
     private final Recycler.Handle<PooledByteBuf<T>> recyclerHandle;
 
     protected PoolChunk<T> chunk;
-    protected long handle;
-    protected T memory;
-    protected int offset;
+    protected long handle; //Chunk中对象分配的内存块的位置
+    protected T memory; //内存空间
+    protected int offset; //memory开始的位置
     protected int length;
     int maxLength;
     PoolThreadCache cache;
     ByteBuffer tmpNioBuf;
-    private ByteBufAllocator allocator;
+    private ByteBufAllocator allocator; //ByteBuf分配器对象
 
     @SuppressWarnings("unchecked")
     protected PooledByteBuf(Recycler.Handle<? extends PooledByteBuf<T>> recyclerHandle, int maxCapacity) {
