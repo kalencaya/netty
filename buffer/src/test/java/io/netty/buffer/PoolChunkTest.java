@@ -26,4 +26,13 @@ public class PoolChunkTest {
         System.out.println(Arrays.toString(memoryMap));
         System.out.println(Arrays.toString(depthMap));
     }
+
+    @Test
+    public void testOperator() {
+        int d = 5;
+        int id = 1;
+        int initial = - (1 << d);
+        System.out.println(initial);
+        System.out.println(id & initial);
+    }
 }

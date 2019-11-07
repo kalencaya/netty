@@ -263,9 +263,9 @@ final class PoolChunk<T> implements PoolChunkMetric {
         while (id > 1) {
             int parentId = id >>> 1;
             byte val1 = value(id);
-            byte val2 = value(id ^ 1);
+            byte val2 = value(id ^ 1); //兄弟节点
             byte val = val1 < val2 ? val1 : val2;
-            setValue(parentId, val);
+            setValue(parentId, val); //更新父节点值为较小的高度
             id = parentId;
         }
     }
@@ -304,20 +304,26 @@ final class PoolChunk<T> implements PoolChunkMetric {
      * @return index in memoryMap
      */
     private int allocateNode(int d) {
+        //直接获取根节点的高度值，如果根节点的高度大于分配的层级d，则说明无法在d层分配，直接返回。
         int id = 1;
         int initial = - (1 << d); // has last d bits = 0 and rest all = 1
         byte val = value(id);
         if (val > d) { // unusable
             return -1;
         }
+        // 获得第 d 层，匹配的节点。
+        // id & initial 来保证高度小于 d 会继续循环。id & initial 可以参考 size % subpageOverflowMask。当id > initial时返回结果不为0
         while (val < d || (id & initial) == 0) { // id & initial == 1 << d for all ids at depth d, for < d it is 0
-            id <<= 1;
+            //默认从左子节点开始分配
+            id <<= 1; //id = id << 1。看了好半天才明白<<=是个啥操作符。。。
             val = value(id);
             if (val > d) {
-                id ^= 1;
+                id ^= 1; //左子节点不满足，则选择右子节点。这里是一个很巧妙地 + 1操作
                 val = value(id);
             }
         }
+        //准备着手分配id。如果value == d说明当前id未分配。(id & initial) == 1 << d这一步的目的是保证id所在的层级与d相同。
+        // id & initial 是一个掩码操作，
         byte value = value(id);
         assert value == d && (id & initial) == 1 << d : String.format("val = %d, id & initial = %d, d = %d",
                 value, id & initial, d);

@@ -107,4 +107,15 @@ public class PoolArenaTest {
         Assert.assertEquals(1, metric.numNormalDeallocations());
         Assert.assertEquals(1, metric.numNormalAllocations());
     }
+
+    @Test
+    public void testByteOperate(){
+        int pageSize = 8 * 1024; //8KB
+        int subpageOverflowMask = ~(pageSize - 1); //掩码，用于判断是否超过pageSize大小
+        System.out.println("pageSize: " + Integer.toBinaryString(pageSize));
+        System.out.println("subpageOverflowMask: " + Integer.toBinaryString(subpageOverflowMask));
+
+        Assert.assertTrue((7 * 1024 & subpageOverflowMask) != 0);
+        Assert.assertTrue((9 * 1024 & subpageOverflowMask) == 0);
+    }
 }
