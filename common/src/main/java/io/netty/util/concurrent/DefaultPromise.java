@@ -34,16 +34,22 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(DefaultPromise.class);
     private static final InternalLogger rejectedExecutionLogger =
             InternalLoggerFactory.getInstance(DefaultPromise.class.getName() + ".rejectedExecution");
+    // 可以嵌套的Listener的最大层数，可见最大值为8，避免回调地狱
     private static final int MAX_LISTENER_STACK_DEPTH = Math.min(8,
             SystemPropertyUtil.getInt("io.netty.defaultPromise.maxListenerStackDepth", 8));
+    // result字段由使用RESULT_UPDATER更新
     @SuppressWarnings("rawtypes")
     private static final AtomicReferenceFieldUpdater<DefaultPromise, Object> RESULT_UPDATER =
             AtomicReferenceFieldUpdater.newUpdater(DefaultPromise.class, Object.class, "result");
+    // 异步操作成功且结果为null时设置result为改值
     private static final Object SUCCESS = new Object();
+    // 异步操作不可取消
     private static final Object UNCANCELLABLE = new Object();
+    // 异步操作失败时保存异常原因
     private static final CauseHolder CANCELLATION_CAUSE_HOLDER = new CauseHolder(ThrowableUtil.unknownStackTrace(
             new CancellationException(), DefaultPromise.class, "cancel(...)"));
 
+    // 异步操作结果
     private volatile Object result;
     private final EventExecutor executor;
     /**
@@ -55,6 +61,7 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
     private Object listeners;
     /**
      * Threading - synchronized(this). We are required to hold the monitor to use Java's underlying wait()/notifyAll().
+     * 阻塞等待该结果的线程数
      */
     private short waiters;
 

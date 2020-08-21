@@ -31,11 +31,13 @@ public interface EventExecutor extends EventExecutorGroup {
     EventExecutor next();
 
     /**
+     * 返回EventExecutor所属的group。
      * Return the {@link EventExecutorGroup} which is the parent of this {@link EventExecutor},
      */
     EventExecutorGroup parent();
 
     /**
+     * 当前线程是否在EventLoop线程内，可以通过Thread.currentThread进行比较。
      * Calls {@link #inEventLoop(Thread)} with {@link Thread#currentThread()} as argument
      */
     boolean inEventLoop();

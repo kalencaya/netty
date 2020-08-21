@@ -39,8 +39,9 @@ abstract class PoolArena<T> implements PoolArenaMetric {
     }
 
     /**
-     * {@link #tinySubpagePools} 数组的大小
      *
+     * {@link #tinySubpagePools} 数组的大小
+     * 512 为每个Page最多能划分为512个SubPage，那么为什么要 无符号右移 4 位呢？
      * 默认为 32
      */
     static final int numTinySubpagePools = 512 >>> 4;
