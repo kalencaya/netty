@@ -354,6 +354,9 @@ public class ResourceLeakDetector<T> {
                 (AtomicIntegerFieldUpdater)
                         AtomicIntegerFieldUpdater.newUpdater(DefaultResourceLeak.class, "droppedRecords");
 
+        /**
+         * head -> Record.BOTTOM
+         */
         @SuppressWarnings("unused")
         private volatile Record head;
         @SuppressWarnings("unused")
@@ -428,6 +431,8 @@ public class ResourceLeakDetector<T> {
                         // already closed.
                         return;
                     }
+                    // 初始的pos是-1，首次的Record.pos = Record.BOTTOM.pos + 1 = 0
+                    // 相当于每个Record的pos是以0开始的，因此数量为pos + 1
                     final int numElements = oldHead.pos + 1;
                     if (numElements >= TARGET_RECORDS) {
                         final int backOffFactor = Math.min(numElements - TARGET_RECORDS, 30);

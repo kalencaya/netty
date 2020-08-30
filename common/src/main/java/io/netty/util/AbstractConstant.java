@@ -33,6 +33,7 @@ public abstract class AbstractConstant<T extends AbstractConstant<T>> implements
     private static final AtomicLong uniqueIdGenerator = new AtomicLong();
     private final int id;
     private final String name;
+    // 用于Comparable#compareTo(Object)方法的实现
     private final long uniquifier;
 
     /**
