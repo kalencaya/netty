@@ -294,6 +294,9 @@ public class ResourceLeakDetector<T> {
                 break;
             }
 
+            // 返回true意味着资源没有调用close或者dispose方法结束追踪就被GC了，意味着该资源存在泄漏。
+            // close方法和dispose内会调用remove方法移除这个监控器，如果调用ref.dispose()移除成功，则
+            // 说明之前没有调用过
             if (!ref.dispose()) {
                 continue;
             }
@@ -355,14 +358,24 @@ public class ResourceLeakDetector<T> {
                         AtomicIntegerFieldUpdater.newUpdater(DefaultResourceLeak.class, "droppedRecords");
 
         /**
-         * head -> Record.BOTTOM
+         * 存储着最新的调用轨迹信息，record内部通过next指针形成一个单向链表
+         * 初始时head -> Record.BOTTOM
          */
         @SuppressWarnings("unused")
         private volatile Record head;
+        /**
+         * 调用轨迹不会无限制的存储，有一个上限阀值。超过了阀值会抛弃掉一些调用轨迹信息。
+         */
         @SuppressWarnings("unused")
         private volatile int droppedRecords;
 
+        /**
+         * 存储着所有的追踪对象，用于确认追踪对象是否处于可用。
+         */
         private final Set<DefaultResourceLeak<?>> allLeaks;
+        /**
+         * 记录追踪对象的hash值，用于后续操作中的对象对比。
+         */
         private final int trackedHash;
 
         DefaultResourceLeak(
@@ -466,6 +479,11 @@ public class ResourceLeakDetector<T> {
             return false;
         }
 
+        /**
+         * 因为可能在调用close方法，close方法正在执行还没有结束的时候，实例对象被回收了，
+         * 从而导致dispose方法返回true，误判对象泄漏。只需要让close方法执行完毕前，让对象不要回收即可。
+         * reachabilityFence0方法就完成了这个作用。
+         */
         @Override
         public boolean close(T trackedObject) {
             // Ensure that the object that was tracked is the same as the one that was passed to close(...).

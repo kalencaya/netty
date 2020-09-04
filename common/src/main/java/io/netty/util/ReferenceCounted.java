@@ -37,6 +37,7 @@ public interface ReferenceCounted {
 
     /**
      * Increases the reference count by {@code 1}.
+     * retain: 保留；保持；持有；继续拥有
      */
     ReferenceCounted retain();
 
