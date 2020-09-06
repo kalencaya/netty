@@ -28,14 +28,34 @@ abstract class PooledByteBuf<T> extends AbstractReferenceCountedByteBuf {
     private final Recycler.Handle<PooledByteBuf<T>> recyclerHandle;
 
     protected PoolChunk<T> chunk;
-    protected long handle; //Chunk中对象分配的内存块的位置
-    protected T memory; //内存空间
-    protected int offset; //memory开始的位置
+    /**
+     * Chunk中对象分配的内存块的位置
+     */
+    protected long handle;
+    /**
+     * 内存空间
+     */
+    protected T memory;
+    /**
+     * memory开始的位置
+     * @see #idx(int)
+     */
+    protected int offset;
+    /**
+     * 容量
+     * @see #capacity()
+     */
     protected int length;
+    /**
+     * 占用 {@link #memory} 的大小
+     */
     int maxLength;
     PoolThreadCache cache;
     ByteBuffer tmpNioBuf;
-    private ByteBufAllocator allocator; //ByteBuf分配器对象
+    /**
+     * ByteBuf 分配器对象
+     */
+    private ByteBufAllocator allocator;
 
     @SuppressWarnings("unchecked")
     protected PooledByteBuf(Recycler.Handle<? extends PooledByteBuf<T>> recyclerHandle, int maxCapacity) {
@@ -87,20 +107,25 @@ abstract class PooledByteBuf<T> extends AbstractReferenceCountedByteBuf {
     public final ByteBuf capacity(int newCapacity) {
         checkNewCapacity(newCapacity);
 
+        // 对于基于 unPoolooled 的 PoolChunk 对象，除非容量不变，否则会扩容或缩容
         // If the request capacity does not require reallocation, just update the length of the memory.
         if (chunk.unpooled) {
             if (newCapacity == length) {
                 return this;
             }
         } else {
+            // 扩容
             if (newCapacity > length) {
                 if (newCapacity <= maxLength) {
                     length = newCapacity;
                     return this;
                 }
+            // 缩容
             } else if (newCapacity < length) {
+                // 大于 maxLength 的一半
                 if (newCapacity > maxLength >>> 1) {
                     if (maxLength <= 512) {
+                        // 因为 Netty SubPage 最小是 16 ，如果小于等 16 ，无法缩容。
                         if (newCapacity > maxLength - 16) {
                             length = newCapacity;
                             setIndex(Math.min(readerIndex(), newCapacity), Math.min(writerIndex(), newCapacity));
@@ -117,6 +142,7 @@ abstract class PooledByteBuf<T> extends AbstractReferenceCountedByteBuf {
             }
         }
 
+        // 重新分配新的内存空间，并将数据复制到其中。并且，释放老的内存空间。
         // Reallocation required.
         chunk.arena.reallocate(this, newCapacity, true);
         return this;
