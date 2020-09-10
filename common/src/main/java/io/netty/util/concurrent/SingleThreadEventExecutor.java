@@ -805,8 +805,8 @@ public abstract class SingleThreadEventExecutor extends AbstractScheduledEventEx
                 }
             }
         }
-        //因为NIO是使用Selector来感知是否读写的，但是这里使用了一个任务队列，添加任务到队列中
-        //Selector无法感知到任务队列添加了什么任务，所以需要wakeup方法来进行唤醒线程执行任务
+        // 因为NIO是使用Selector来感知是否读写的，但是这里使用了一个任务队列，添加任务到队列中
+        // Selector无法感知到任务队列添加了什么任务，所以需要wakeup方法来进行唤醒线程执行任务
         // 但是Oio在任务添加到队列中时是能够感知到有任务添加的，所以不需要调用wakeup来唤醒线程
         // 因此addTaskWakesUP参数对于Oio来说就是不去主动唤醒任务，对于Nio就是需要去主动唤醒
         // addTaskWakesUP的目的就是每次添加任务到任务队列时，能够主动通知添加了一个任务
