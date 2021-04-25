@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -28,12 +28,14 @@ import io.netty.channel.ChannelPipeline;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.ServerChannel;
 import io.netty.util.AttributeKey;
+import io.netty.util.internal.ObjectUtil;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
@@ -45,9 +47,10 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ServerBootstrap.class);
 
-
+    // The order in which child ChannelOptions are applied is important they may depend on each other for validation
+    // purposes.
     private final Map<ChannelOption<?>, Object> childOptions = new LinkedHashMap<ChannelOption<?>, Object>();
-    private final Map<AttributeKey<?>, Object> childAttrs = new LinkedHashMap<AttributeKey<?>, Object>();
+    private final Map<AttributeKey<?>, Object> childAttrs = new ConcurrentHashMap<AttributeKey<?>, Object>();
     private final ServerBootstrapConfig config = new ServerBootstrapConfig(this);
     private volatile EventLoopGroup childGroup;
     private volatile ChannelHandler childHandler;
@@ -61,9 +64,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         synchronized (bootstrap.childOptions) {
             childOptions.putAll(bootstrap.childOptions);
         }
-        synchronized (bootstrap.childAttrs) {
-            childAttrs.putAll(bootstrap.childAttrs);
-        }
+        childAttrs.putAll(bootstrap.childAttrs);
     }
 
     /**
@@ -81,13 +82,10 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
      */
     public ServerBootstrap group(EventLoopGroup parentGroup, EventLoopGroup childGroup) {
         super.group(parentGroup);
-        if (childGroup == null) {
-            throw new NullPointerException("childGroup");
-        }
         if (this.childGroup != null) {
             throw new IllegalStateException("childGroup set already");
         }
-        this.childGroup = childGroup;
+        this.childGroup = ObjectUtil.checkNotNull(childGroup, "childGroup");
         return this;
     }
 
@@ -96,15 +94,11 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
      * {@code null}，那么会移除这个{@link ChannelOption}。
      */
     public <T> ServerBootstrap childOption(ChannelOption<T> childOption, T value) {
-        if (childOption == null) {
-            throw new NullPointerException("childOption");
-        }
-        if (value == null) {
-            synchronized (childOptions) {
+        ObjectUtil.checkNotNull(childOption, "childOption");
+        synchronized (childOptions) {
+            if (value == null) {
                 childOptions.remove(childOption);
-            }
-        } else {
-            synchronized (childOptions) {
+            } else {
                 childOptions.put(childOption, value);
             }
         }
@@ -116,9 +110,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
      * 那么为什么这个方法实现没有使用锁呢？？
      */
     public <T> ServerBootstrap childAttr(AttributeKey<T> childKey, T value) {
-        if (childKey == null) {
-            throw new NullPointerException("childKey");
-        }
+        ObjectUtil.checkNotNull(childKey, "childKey");
         if (value == null) {
             childAttrs.remove(childKey);
         } else {
@@ -131,45 +123,25 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
      * 设置处理{@link Channel}收到的请求的{@link ChannelHandler}。
      */
     public ServerBootstrap childHandler(ChannelHandler childHandler) {
-        if (childHandler == null) {
-            throw new NullPointerException("childHandler");
-        }
-        this.childHandler = childHandler;
+        this.childHandler = ObjectUtil.checkNotNull(childHandler, "childHandler");
         return this;
     }
 
     @Override
-    void init(Channel channel) throws Exception {
-        final Map<ChannelOption<?>, Object> options = options0();
-        synchronized (options) {
-            setChannelOptions(channel, options, logger);
-        }
-
-        final Map<AttributeKey<?>, Object> attrs = attrs0();
-        synchronized (attrs) {
-            for (Entry<AttributeKey<?>, Object> e: attrs.entrySet()) {
-                @SuppressWarnings("unchecked")
-                AttributeKey<Object> key = (AttributeKey<Object>) e.getKey();
-                channel.attr(key).set(e.getValue());
-            }
-        }
+    void init(Channel channel) {
+        setChannelOptions(channel, newOptionsArray(), logger);
+        setAttributes(channel, newAttributesArray());
 
         ChannelPipeline p = channel.pipeline();
 
         final EventLoopGroup currentChildGroup = childGroup;
         final ChannelHandler currentChildHandler = childHandler;
-        final Entry<ChannelOption<?>, Object>[] currentChildOptions;
-        final Entry<AttributeKey<?>, Object>[] currentChildAttrs;
-        synchronized (childOptions) {
-            currentChildOptions = childOptions.entrySet().toArray(newOptionArray(0));
-        }
-        synchronized (childAttrs) {
-            currentChildAttrs = childAttrs.entrySet().toArray(newAttrArray(0));
-        }
+        final Entry<ChannelOption<?>, Object>[] currentChildOptions = newOptionsArray(childOptions);
+        final Entry<AttributeKey<?>, Object>[] currentChildAttrs = newAttributesArray(childAttrs);
 
         p.addLast(new ChannelInitializer<Channel>() {
             @Override
-            public void initChannel(final Channel ch) throws Exception {
+            public void initChannel(final Channel ch) {
                 final ChannelPipeline pipeline = ch.pipeline();
                 ChannelHandler handler = config.handler();
                 if (handler != null) {
@@ -200,31 +172,6 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
         return this;
     }
 
-    @SuppressWarnings("unchecked")
-    private static Entry<AttributeKey<?>, Object>[] newAttrArray(int size) {
-        return new Entry[size];
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map.Entry<ChannelOption<?>, Object>[] newOptionArray(int size) {
-        return new Map.Entry[size];
-    }
-
-    private volatile int test = 0; // 必须是volatile todo 测试代码，待删除
-    public static void main(String[] args){
-        // 想测试原子更新器的速度有多快
-        ServerBootstrap bootstrap = new ServerBootstrap();
-        System.out.println(System.currentTimeMillis());
-        AtomicIntegerFieldUpdater atomicIntegerFieldUpdater = AtomicIntegerFieldUpdater.newUpdater(ServerBootstrap.class, "test");
-        System.out.println(System.currentTimeMillis());
-        atomicIntegerFieldUpdater.compareAndSet(bootstrap, 1, 0);
-        System.out.println(System.currentTimeMillis());
-        int test = atomicIntegerFieldUpdater.get(bootstrap);
-        System.out.println(System.currentTimeMillis());
-
-    }
-
-    // 继承ChannelInboundHandlerAdapter，说明处理的是Inbound事件
     private static class ServerBootstrapAcceptor extends ChannelInboundHandlerAdapter {
 
         private final EventLoopGroup childGroup;
@@ -265,10 +212,7 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
             child.pipeline().addLast(childHandler);
 
             setChannelOptions(child, childOptions, logger);
-
-            for (Entry<AttributeKey<?>, Object> e: childAttrs) {
-                child.attr((AttributeKey<Object>) e.getKey()).set(e.getValue());
-            }
+            setAttributes(child, childAttrs);
 
             // 这里和ServerBootstrap和Bootstrap注册的过程类似，服务端接受客户端连接然后把客户端注册到eventloop上
             // 最后调用的也是Unsafe的方法
@@ -328,7 +272,9 @@ public class ServerBootstrap extends AbstractBootstrap<ServerBootstrap, ServerCh
     }
 
     final Map<ChannelOption<?>, Object> childOptions() {
-        return copiedMap(childOptions);
+        synchronized (childOptions) {
+            return copiedMap(childOptions);
+        }
     }
 
     final Map<AttributeKey<?>, Object> childAttrs() {

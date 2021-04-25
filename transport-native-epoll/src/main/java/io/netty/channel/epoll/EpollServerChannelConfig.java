@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -82,6 +82,7 @@ public class EpollServerChannelConfig extends EpollChannelConfig implements Serv
         return true;
     }
 
+    @Override
     public boolean isReuseAddress() {
         try {
             return ((AbstractEpollChannel) channel).socket.isReuseAddress();
@@ -90,6 +91,7 @@ public class EpollServerChannelConfig extends EpollChannelConfig implements Serv
         }
     }
 
+    @Override
     public EpollServerChannelConfig setReuseAddress(boolean reuseAddress) {
         try {
             ((AbstractEpollChannel) channel).socket.setReuseAddress(reuseAddress);
@@ -99,6 +101,7 @@ public class EpollServerChannelConfig extends EpollChannelConfig implements Serv
         }
     }
 
+    @Override
     public int getReceiveBufferSize() {
         try {
             return ((AbstractEpollChannel) channel).socket.getReceiveBufferSize();
@@ -107,6 +110,7 @@ public class EpollServerChannelConfig extends EpollChannelConfig implements Serv
         }
     }
 
+    @Override
     public EpollServerChannelConfig setReceiveBufferSize(int receiveBufferSize) {
         try {
             ((AbstractEpollChannel) channel).socket.setReceiveBufferSize(receiveBufferSize);
@@ -116,10 +120,12 @@ public class EpollServerChannelConfig extends EpollChannelConfig implements Serv
         }
     }
 
+    @Override
     public int getBacklog() {
         return backlog;
     }
 
+    @Override
     public EpollServerChannelConfig setBacklog(int backlog) {
         checkPositiveOrZero(backlog, "backlog");
         this.backlog = backlog;

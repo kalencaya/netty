@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -19,11 +19,13 @@ package io.netty.buffer;
 import static io.netty.util.internal.ObjectUtil.checkPositiveOrZero;
 
 import io.netty.util.NettyRuntime;
+import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.concurrent.FastThreadLocal;
 import io.netty.util.concurrent.FastThreadLocalThread;
 import io.netty.util.internal.PlatformDependent;
 import io.netty.util.internal.StringUtil;
 import io.netty.util.internal.SystemPropertyUtil;
+import io.netty.util.internal.ThreadExecutorMap;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
@@ -31,6 +33,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 public class PooledByteBufAllocator extends AbstractByteBufAllocator implements ByteBufAllocatorMetricProvider {
 
@@ -40,11 +43,11 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
 
     private static final int DEFAULT_PAGE_SIZE;
     private static final int DEFAULT_MAX_ORDER; // 8192 << 11 = 16 MiB per chunk
-    private static final int DEFAULT_TINY_CACHE_SIZE;
     private static final int DEFAULT_SMALL_CACHE_SIZE;
     private static final int DEFAULT_NORMAL_CACHE_SIZE;
-    private static final int DEFAULT_MAX_CACHED_BUFFER_CAPACITY;
+    static final int DEFAULT_MAX_CACHED_BUFFER_CAPACITY;
     private static final int DEFAULT_CACHE_TRIM_INTERVAL;
+    private static final long DEFAULT_CACHE_TRIM_INTERVAL_MILLIS;
     private static final boolean DEFAULT_USE_CACHE_FOR_ALL_THREADS;
     private static final int DEFAULT_DIRECT_MEMORY_CACHE_ALIGNMENT;
     static final int DEFAULT_MAX_CACHED_BYTEBUFFERS_PER_CHUNK;
@@ -52,16 +55,27 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
     private static final int MIN_PAGE_SIZE = 4096;
     private static final int MAX_CHUNK_SIZE = (int) (((long) Integer.MAX_VALUE + 1) / 2);
 
+    private final Runnable trimTask = new Runnable() {
+        @Override
+        public void run() {
+            PooledByteBufAllocator.this.trimCurrentThreadCache();
+        }
+    };
+
     static {
+        int defaultAlignment = SystemPropertyUtil.getInt(
+                "io.netty.allocator.directMemoryCacheAlignment", 0);
         int defaultPageSize = SystemPropertyUtil.getInt("io.netty.allocator.pageSize", 8192);
         Throwable pageSizeFallbackCause = null;
         try {
-            validateAndCalculatePageShifts(defaultPageSize);
+            validateAndCalculatePageShifts(defaultPageSize, defaultAlignment);
         } catch (Throwable t) {
             pageSizeFallbackCause = t;
             defaultPageSize = 8192;
+            defaultAlignment = 0;
         }
         DEFAULT_PAGE_SIZE = defaultPageSize;
+        DEFAULT_DIRECT_MEMORY_CACHE_ALIGNMENT = defaultAlignment;
 
         int defaultMaxOrder = SystemPropertyUtil.getInt("io.netty.allocator.maxOrder", 11);
         Throwable maxOrderFallbackCause = null;
@@ -100,7 +114,6 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
                                 PlatformDependent.maxDirectMemory() / defaultChunkSize / 2 / 3)));
 
         // cache sizes
-        DEFAULT_TINY_CACHE_SIZE = SystemPropertyUtil.getInt("io.netty.allocator.tinyCacheSize", 512);
         DEFAULT_SMALL_CACHE_SIZE = SystemPropertyUtil.getInt("io.netty.allocator.smallCacheSize", 256);
         DEFAULT_NORMAL_CACHE_SIZE = SystemPropertyUtil.getInt("io.netty.allocator.normalCacheSize", 64);
 
@@ -113,11 +126,25 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
         DEFAULT_CACHE_TRIM_INTERVAL = SystemPropertyUtil.getInt(
                 "io.netty.allocator.cacheTrimInterval", 8192);
 
+        if (SystemPropertyUtil.contains("io.netty.allocation.cacheTrimIntervalMillis")) {
+            logger.warn("-Dio.netty.allocation.cacheTrimIntervalMillis is deprecated," +
+                    " use -Dio.netty.allocator.cacheTrimIntervalMillis");
+
+            if (SystemPropertyUtil.contains("io.netty.allocator.cacheTrimIntervalMillis")) {
+                // Both system properties are specified. Use the non-deprecated one.
+                DEFAULT_CACHE_TRIM_INTERVAL_MILLIS = SystemPropertyUtil.getLong(
+                        "io.netty.allocator.cacheTrimIntervalMillis", 0);
+            } else {
+                DEFAULT_CACHE_TRIM_INTERVAL_MILLIS = SystemPropertyUtil.getLong(
+                        "io.netty.allocation.cacheTrimIntervalMillis", 0);
+            }
+        } else {
+            DEFAULT_CACHE_TRIM_INTERVAL_MILLIS = SystemPropertyUtil.getLong(
+                    "io.netty.allocator.cacheTrimIntervalMillis", 0);
+        }
+
         DEFAULT_USE_CACHE_FOR_ALL_THREADS = SystemPropertyUtil.getBoolean(
                 "io.netty.allocator.useCacheForAllThreads", true);
-
-        DEFAULT_DIRECT_MEMORY_CACHE_ALIGNMENT = SystemPropertyUtil.getInt(
-                "io.netty.allocator.directMemoryCacheAlignment", 0);
 
         // Use 1023 by default as we use an ArrayDeque as backing storage which will then allocate an internal array
         // of 1024 elements. Otherwise we would allocate 2048 and only use 1024 which is wasteful.
@@ -138,11 +165,11 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
                 logger.debug("-Dio.netty.allocator.maxOrder: {}", DEFAULT_MAX_ORDER, maxOrderFallbackCause);
             }
             logger.debug("-Dio.netty.allocator.chunkSize: {}", DEFAULT_PAGE_SIZE << DEFAULT_MAX_ORDER);
-            logger.debug("-Dio.netty.allocator.tinyCacheSize: {}", DEFAULT_TINY_CACHE_SIZE);
             logger.debug("-Dio.netty.allocator.smallCacheSize: {}", DEFAULT_SMALL_CACHE_SIZE);
             logger.debug("-Dio.netty.allocator.normalCacheSize: {}", DEFAULT_NORMAL_CACHE_SIZE);
             logger.debug("-Dio.netty.allocator.maxCachedBufferCapacity: {}", DEFAULT_MAX_CACHED_BUFFER_CAPACITY);
             logger.debug("-Dio.netty.allocator.cacheTrimInterval: {}", DEFAULT_CACHE_TRIM_INTERVAL);
+            logger.debug("-Dio.netty.allocator.cacheTrimIntervalMillis: {}", DEFAULT_CACHE_TRIM_INTERVAL_MILLIS);
             logger.debug("-Dio.netty.allocator.useCacheForAllThreads: {}", DEFAULT_USE_CACHE_FOR_ALL_THREADS);
             logger.debug("-Dio.netty.allocator.maxCachedByteBuffersPerChunk: {}",
                     DEFAULT_MAX_CACHED_BYTEBUFFERS_PER_CHUNK);
@@ -154,7 +181,6 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
 
     private final PoolArena<byte[]>[] heapArenas;
     private final PoolArena<ByteBuffer>[] directArenas;
-    private final int tinyCacheSize;
     private final int smallCacheSize;
     private final int normalCacheSize;
     private final List<PoolArenaMetric> heapArenaMetrics;
@@ -179,42 +205,79 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
 
     /**
      * @deprecated use
-     * {@link PooledByteBufAllocator#PooledByteBufAllocator(boolean, int, int, int, int, int, int, int, boolean)}
+     * {@link PooledByteBufAllocator#PooledByteBufAllocator(boolean, int, int, int, int, int, int, boolean)}
      */
     @Deprecated
     public PooledByteBufAllocator(boolean preferDirect, int nHeapArena, int nDirectArena, int pageSize, int maxOrder) {
         this(preferDirect, nHeapArena, nDirectArena, pageSize, maxOrder,
-                DEFAULT_TINY_CACHE_SIZE, DEFAULT_SMALL_CACHE_SIZE, DEFAULT_NORMAL_CACHE_SIZE);
+             0, DEFAULT_SMALL_CACHE_SIZE, DEFAULT_NORMAL_CACHE_SIZE);
     }
 
     /**
      * @deprecated use
-     * {@link PooledByteBufAllocator#PooledByteBufAllocator(boolean, int, int, int, int, int, int, int, boolean)}
+     * {@link PooledByteBufAllocator#PooledByteBufAllocator(boolean, int, int, int, int, int, int, boolean)}
      */
     @Deprecated
     public PooledByteBufAllocator(boolean preferDirect, int nHeapArena, int nDirectArena, int pageSize, int maxOrder,
                                   int tinyCacheSize, int smallCacheSize, int normalCacheSize) {
-        this(preferDirect, nHeapArena, nDirectArena, pageSize, maxOrder, tinyCacheSize, smallCacheSize,
-                normalCacheSize, DEFAULT_USE_CACHE_FOR_ALL_THREADS, DEFAULT_DIRECT_MEMORY_CACHE_ALIGNMENT);
+        this(preferDirect, nHeapArena, nDirectArena, pageSize, maxOrder, smallCacheSize,
+             normalCacheSize, DEFAULT_USE_CACHE_FOR_ALL_THREADS, DEFAULT_DIRECT_MEMORY_CACHE_ALIGNMENT);
     }
 
+    /**
+     * @deprecated use
+     * {@link PooledByteBufAllocator#PooledByteBufAllocator(boolean, int, int, int, int, int, int, boolean)}
+     */
+    @Deprecated
     public PooledByteBufAllocator(boolean preferDirect, int nHeapArena,
                                   int nDirectArena, int pageSize, int maxOrder, int tinyCacheSize,
                                   int smallCacheSize, int normalCacheSize,
                                   boolean useCacheForAllThreads) {
         this(preferDirect, nHeapArena, nDirectArena, pageSize, maxOrder,
-                tinyCacheSize, smallCacheSize, normalCacheSize,
-                useCacheForAllThreads, DEFAULT_DIRECT_MEMORY_CACHE_ALIGNMENT);
+             smallCacheSize, normalCacheSize,
+             useCacheForAllThreads);
     }
 
+    public PooledByteBufAllocator(boolean preferDirect, int nHeapArena,
+                                  int nDirectArena, int pageSize, int maxOrder,
+                                  int smallCacheSize, int normalCacheSize,
+                                  boolean useCacheForAllThreads) {
+        this(preferDirect, nHeapArena, nDirectArena, pageSize, maxOrder,
+             smallCacheSize, normalCacheSize,
+             useCacheForAllThreads, DEFAULT_DIRECT_MEMORY_CACHE_ALIGNMENT);
+    }
+
+    /**
+     * @deprecated use
+     * {@link PooledByteBufAllocator#PooledByteBufAllocator(boolean, int, int, int, int, int, int, boolean, int)}
+     */
+    @Deprecated
     public PooledByteBufAllocator(boolean preferDirect, int nHeapArena, int nDirectArena, int pageSize, int maxOrder,
                                   int tinyCacheSize, int smallCacheSize, int normalCacheSize,
                                   boolean useCacheForAllThreads, int directMemoryCacheAlignment) {
+        this(preferDirect, nHeapArena, nDirectArena, pageSize, maxOrder,
+             smallCacheSize, normalCacheSize,
+             useCacheForAllThreads, directMemoryCacheAlignment);
+    }
+
+    public PooledByteBufAllocator(boolean preferDirect, int nHeapArena, int nDirectArena, int pageSize, int maxOrder,
+                                  int smallCacheSize, int normalCacheSize,
+                                  boolean useCacheForAllThreads, int directMemoryCacheAlignment) {
         super(preferDirect);
         threadCache = new PoolThreadLocalCache(useCacheForAllThreads);
-        this.tinyCacheSize = tinyCacheSize;
         this.smallCacheSize = smallCacheSize;
         this.normalCacheSize = normalCacheSize;
+
+        if (directMemoryCacheAlignment != 0) {
+            if (!PlatformDependent.hasAlignDirectByteBuffer()) {
+                throw new UnsupportedOperationException("Buffer alignment is not supported. " +
+                        "Either Unsafe or ByteBuffer.alignSlice() must be available.");
+            }
+
+            // Ensure page size is a whole multiple of the alignment, or bump it to the next whole multiple.
+            pageSize = (int) PlatformDependent.align(pageSize, directMemoryCacheAlignment);
+        }
+
         chunkSize = validateAndCalculateChunkSize(pageSize, maxOrder);
 
         checkPositiveOrZero(nHeapArena, "nHeapArena");
@@ -230,14 +293,14 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
                     + directMemoryCacheAlignment + " (expected: power of two)");
         }
 
-        int pageShifts = validateAndCalculatePageShifts(pageSize);
+        int pageShifts = validateAndCalculatePageShifts(pageSize, directMemoryCacheAlignment);
 
         if (nHeapArena > 0) {
             heapArenas = newArenaArray(nHeapArena);
             List<PoolArenaMetric> metrics = new ArrayList<PoolArenaMetric>(heapArenas.length);
             for (int i = 0; i < heapArenas.length; i ++) {
                 PoolArena.HeapArena arena = new PoolArena.HeapArena(this,
-                        pageSize, maxOrder, pageShifts, chunkSize,
+                        pageSize, pageShifts, chunkSize,
                         directMemoryCacheAlignment);
                 heapArenas[i] = arena;
                 metrics.add(arena);
@@ -253,7 +316,7 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
             List<PoolArenaMetric> metrics = new ArrayList<PoolArenaMetric>(directArenas.length);
             for (int i = 0; i < directArenas.length; i ++) {
                 PoolArena.DirectArena arena = new PoolArena.DirectArena(
-                        this, pageSize, maxOrder, pageShifts, chunkSize, directMemoryCacheAlignment);
+                        this, pageSize, pageShifts, chunkSize, directMemoryCacheAlignment);
                 directArenas[i] = arena;
                 metrics.add(arena);
             }
@@ -270,13 +333,18 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
         return new PoolArena[size];
     }
 
-    private static int validateAndCalculatePageShifts(int pageSize) {
+    private static int validateAndCalculatePageShifts(int pageSize, int alignment) {
         if (pageSize < MIN_PAGE_SIZE) {
-            throw new IllegalArgumentException("pageSize: " + pageSize + " (expected: " + MIN_PAGE_SIZE + ")");
+            throw new IllegalArgumentException("pageSize: " + pageSize + " (expected: " + MIN_PAGE_SIZE + ')');
         }
 
         if ((pageSize & pageSize - 1) != 0) {
             throw new IllegalArgumentException("pageSize: " + pageSize + " (expected: power of 2)");
+        }
+
+        if (pageSize < alignment) {
+            throw new IllegalArgumentException("Alignment cannot be greater than page size. " +
+                    "Alignment: " + alignment + ", page size: " + pageSize + '.');
         }
 
         // Logarithm base 2. At this point we know that pageSize is a power of two.
@@ -377,10 +445,13 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
     }
 
     /**
-     * Default tiny cache size - System Property: io.netty.allocator.tinyCacheSize - default 512
+     * Default tiny cache size - default 0
+     *
+     * @deprecated Tiny caches have been merged into small caches.
      */
+    @Deprecated
     public static int defaultTinyCacheSize() {
-        return DEFAULT_TINY_CACHE_SIZE;
+        return 0;
     }
 
     /**
@@ -438,19 +509,28 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
             final PoolArena<byte[]> heapArena = leastUsedArena(heapArenas);
             final PoolArena<ByteBuffer> directArena = leastUsedArena(directArenas);
 
-            Thread current = Thread.currentThread();
+            final Thread current = Thread.currentThread();
             if (useCacheForAllThreads || current instanceof FastThreadLocalThread) {
-                return new PoolThreadCache(
-                        heapArena, directArena, tinyCacheSize, smallCacheSize, normalCacheSize,
+                final PoolThreadCache cache = new PoolThreadCache(
+                        heapArena, directArena, smallCacheSize, normalCacheSize,
                         DEFAULT_MAX_CACHED_BUFFER_CAPACITY, DEFAULT_CACHE_TRIM_INTERVAL);
+
+                if (DEFAULT_CACHE_TRIM_INTERVAL_MILLIS > 0) {
+                    final EventExecutor executor = ThreadExecutorMap.currentExecutor();
+                    if (executor != null) {
+                        executor.scheduleAtFixedRate(trimTask, DEFAULT_CACHE_TRIM_INTERVAL_MILLIS,
+                                DEFAULT_CACHE_TRIM_INTERVAL_MILLIS, TimeUnit.MILLISECONDS);
+                    }
+                }
+                return cache;
             }
             // No caching so just use 0 as sizes.
-            return new PoolThreadCache(heapArena, directArena, 0, 0, 0, 0, 0);
+            return new PoolThreadCache(heapArena, directArena, 0, 0, 0, 0);
         }
 
         @Override
         protected void onRemoval(PoolThreadCache threadCache) {
-            threadCache.free();
+            threadCache.free(false);
         }
 
         private <T> PoolArena<T> leastUsedArena(PoolArena<T>[] arenas) {
@@ -542,7 +622,7 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
      */
     @Deprecated
     public int tinyCacheSize() {
-        return tinyCacheSize;
+        return 0;
     }
 
     /**
@@ -601,6 +681,21 @@ public class PooledByteBufAllocator extends AbstractByteBufAllocator implements 
         PoolThreadCache cache =  threadCache.get();
         assert cache != null;
         return cache;
+    }
+
+    /**
+     * Trim thread local cache for the current {@link Thread}, which will give back any cached memory that was not
+     * allocated frequently since the last trim operation.
+     *
+     * Returns {@code true} if a cache for the current {@link Thread} exists and so was trimmed, false otherwise.
+     */
+    public boolean trimCurrentThreadCache() {
+        PoolThreadCache cache = threadCache.getIfExists();
+        if (cache != null) {
+            cache.trim();
+            return true;
+        }
+        return false;
     }
 
     /**

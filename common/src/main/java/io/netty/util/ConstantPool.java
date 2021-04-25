@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -16,7 +16,9 @@
 
 package io.netty.util;
 
-import io.netty.util.internal.ObjectUtil;
+import static io.netty.util.internal.ObjectUtil.checkNotNull;
+import static io.netty.util.internal.ObjectUtil.checkNonEmpty;
+
 import io.netty.util.internal.PlatformDependent;
 
 import java.util.concurrent.ConcurrentMap;
@@ -37,14 +39,10 @@ public abstract class ConstantPool<T extends Constant<T>> {
      * Shortcut of {@link #valueOf(String) valueOf(firstNameComponent.getName() + "#" + secondNameComponent)}.
      */
     public T valueOf(Class<?> firstNameComponent, String secondNameComponent) {
-        if (firstNameComponent == null) {
-            throw new NullPointerException("firstNameComponent");
-        }
-        if (secondNameComponent == null) {
-            throw new NullPointerException("secondNameComponent");
-        }
-
-        return valueOf(firstNameComponent.getName() + '#' + secondNameComponent);
+        return valueOf(
+                checkNotNull(firstNameComponent, "firstNameComponent").getName() +
+                '#' +
+                checkNotNull(secondNameComponent, "secondNameComponent"));
     }
 
     /**
@@ -56,8 +54,7 @@ public abstract class ConstantPool<T extends Constant<T>> {
      * @param name the name of the {@link Constant}
      */
     public T valueOf(String name) {
-        checkNotNullAndNotEmpty(name);
-        return getOrCreate(name);
+        return getOrCreate(checkNonEmpty(name, "name"));
     }
 
     /**
@@ -82,8 +79,7 @@ public abstract class ConstantPool<T extends Constant<T>> {
      * Returns {@code true} if a {@link AttributeKey} exists for the given {@code name}.
      */
     public boolean exists(String name) {
-        checkNotNullAndNotEmpty(name);
-        return constants.containsKey(name);
+        return constants.containsKey(checkNonEmpty(name, "name"));
     }
 
     /**
@@ -91,8 +87,7 @@ public abstract class ConstantPool<T extends Constant<T>> {
      * {@link IllegalArgumentException} if a {@link Constant} for the given {@code name} exists.
      */
     public T newInstance(String name) {
-        checkNotNullAndNotEmpty(name);
-        return createOrThrow(name);
+        return createOrThrow(checkNonEmpty(name, "name"));
     }
 
     /**
@@ -111,23 +106,6 @@ public abstract class ConstantPool<T extends Constant<T>> {
         }
 
         throw new IllegalArgumentException(String.format("'%s' is already in use", name));
-    }
-
-    /**
-     * 像这种检测一般来说都是抽离出一个独立的工具类StringUtils之类的，但是这里依然提供了一个实现。
-     * 具体原因有可能是为了提供抛出的异常的错误信息。因为StringUtils一般是一个工具类，要求是无状态的，
-     * 也不应该与具体的逻辑有所牵连。
-     * @param name
-     * @return
-     */
-    private static String checkNotNullAndNotEmpty(String name) {
-        ObjectUtil.checkNotNull(name, "name");
-
-        if (name.isEmpty()) {
-            throw new IllegalArgumentException("empty name");
-        }
-
-        return name;
     }
 
     protected abstract T newConstant(int id, String name);

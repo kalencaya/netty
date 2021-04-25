@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -17,6 +17,7 @@ package io.netty.channel.kqueue;
 
 import io.netty.channel.EventLoop;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.EventLoopTaskQueueFactory;
 import io.netty.channel.SelectStrategy;
 import io.netty.channel.SingleThreadEventLoop;
 import io.netty.channel.kqueue.AbstractKQueueChannel.AbstractKQueueUnsafe;
@@ -71,9 +72,11 @@ final class KQueueEventLoop extends SingleThreadEventLoop {
     private volatile int ioRatio = 50;
 
     KQueueEventLoop(EventLoopGroup parent, Executor executor, int maxEvents,
-                    SelectStrategy strategy, RejectedExecutionHandler rejectedExecutionHandler) {
-        super(parent, executor, false, DEFAULT_MAX_PENDING_TASKS, rejectedExecutionHandler);
-        selectStrategy = ObjectUtil.checkNotNull(strategy, "strategy");
+                    SelectStrategy strategy, RejectedExecutionHandler rejectedExecutionHandler,
+                    EventLoopTaskQueueFactory queueFactory) {
+        super(parent, executor, false, newTaskQueue(queueFactory), newTaskQueue(queueFactory),
+                rejectedExecutionHandler);
+        this.selectStrategy = ObjectUtil.checkNotNull(strategy, "strategy");
         this.kqueueFd = Native.newKQueue();
         if (maxEvents == 0) {
             allowGrowing = true;
@@ -81,8 +84,8 @@ final class KQueueEventLoop extends SingleThreadEventLoop {
         } else {
             allowGrowing = false;
         }
-        changeList = new KQueueEventArray(maxEvents);
-        eventList = new KQueueEventArray(maxEvents);
+        this.changeList = new KQueueEventArray(maxEvents);
+        this.eventList = new KQueueEventArray(maxEvents);
         int result = Native.keventAddUserEvent(kqueueFd.intValue(), KQUEUE_WAKE_UP_IDENT);
         if (result < 0) {
             cleanup();
@@ -90,18 +93,45 @@ final class KQueueEventLoop extends SingleThreadEventLoop {
         }
     }
 
+    private static Queue<Runnable> newTaskQueue(
+            EventLoopTaskQueueFactory queueFactory) {
+        if (queueFactory == null) {
+            return newTaskQueue0(DEFAULT_MAX_PENDING_TASKS);
+        }
+        return queueFactory.newTaskQueue(DEFAULT_MAX_PENDING_TASKS);
+    }
+
     void add(AbstractKQueueChannel ch) {
         assert inEventLoop();
-        channels.put(ch.fd().intValue(), ch);
+        AbstractKQueueChannel old = channels.put(ch.fd().intValue(), ch);
+        // We either expect to have no Channel in the map with the same FD or that the FD of the old Channel is already
+        // closed.
+        assert old == null || !old.isOpen();
     }
 
     void evSet(AbstractKQueueChannel ch, short filter, short flags, int fflags) {
+        assert inEventLoop();
         changeList.evSet(ch, filter, flags, fflags);
     }
 
-    void remove(AbstractKQueueChannel ch) {
+    void remove(AbstractKQueueChannel ch) throws Exception {
         assert inEventLoop();
-        channels.remove(ch.fd().intValue());
+        int fd = ch.fd().intValue();
+
+        AbstractKQueueChannel old = channels.remove(fd);
+        if (old != null && old != ch) {
+            // The Channel mapping was already replaced due FD reuse, put back the stored Channel.
+            channels.put(fd, old);
+
+            // If we found another Channel in the map that is mapped to the same FD the given Channel MUST be closed.
+            assert !ch.isOpen();
+        } else if (ch.isOpen()) {
+            // Remove the filters. This is only needed if it's still open as otherwise it will be automatically
+            // removed once the file-descriptor is closed.
+            //
+            // See also https://www.freebsd.org/cgi/man.cgi?query=kqueue&sektion=2
+            ch.unregisterFilters();
+        }
     }
 
     /**
@@ -267,28 +297,37 @@ final class KQueueEventLoop extends SingleThreadEventLoop {
                     //increase the size of the array as we needed the whole space for the events
                     eventList.realloc(false);
                 }
+            } catch (Error e) {
+                throw (Error) e;
             } catch (Throwable t) {
                 handleLoopException(t);
-            }
-            // Always handle shutdown even if the loop processing threw an exception.
-            try {
-                if (isShuttingDown()) {
-                    closeAll();
-                    if (confirmShutdown()) {
-                        break;
+            } finally {
+                // Always handle shutdown even if the loop processing threw an exception.
+                try {
+                    if (isShuttingDown()) {
+                        closeAll();
+                        if (confirmShutdown()) {
+                            break;
+                        }
                     }
+                } catch (Error e) {
+                    throw (Error) e;
+                } catch (Throwable t) {
+                    handleLoopException(t);
                 }
-            } catch (Throwable t) {
-                handleLoopException(t);
             }
         }
     }
 
     @Override
     protected Queue<Runnable> newTaskQueue(int maxPendingTasks) {
+        return newTaskQueue0(maxPendingTasks);
+    }
+
+    private static Queue<Runnable> newTaskQueue0(int maxPendingTasks) {
         // This event loop never calls takeTask()
         return maxPendingTasks == Integer.MAX_VALUE ? PlatformDependent.<Runnable>newMpscQueue()
-                                                    : PlatformDependent.<Runnable>newMpscQueue(maxPendingTasks);
+                : PlatformDependent.<Runnable>newMpscQueue(maxPendingTasks);
     }
 
     /**
@@ -307,6 +346,11 @@ final class KQueueEventLoop extends SingleThreadEventLoop {
             throw new IllegalArgumentException("ioRatio: " + ioRatio + " (expected: 0 < ioRatio <= 100)");
         }
         this.ioRatio = ioRatio;
+    }
+
+    @Override
+    public int registeredChannels() {
+        return channels.size();
     }
 
     @Override
@@ -329,6 +373,14 @@ final class KQueueEventLoop extends SingleThreadEventLoop {
             kqueueWaitNow();
         } catch (IOException e) {
             // ignore on close
+        }
+
+        // Using the intermediate collection to prevent ConcurrentModificationException.
+        // In the `close()` method, the channel is deleted from `channels` map.
+        AbstractKQueueChannel[] localChannels = channels.values().toArray(new AbstractKQueueChannel[0]);
+
+        for (AbstractKQueueChannel ch: localChannels) {
+            ch.unsafe().close(ch.unsafe().voidPromise());
         }
     }
 

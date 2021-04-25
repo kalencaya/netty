@@ -5,7 +5,7 @@
  * version 2.0 (the "License"); you may not use this file except in compliance
  * with the License. You may obtain a copy of the License at:
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ *   https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -37,7 +37,6 @@ import io.netty.channel.unix.SocketWritableByteChannel;
 import io.netty.channel.unix.UnixChannelUtil;
 import io.netty.util.internal.PlatformDependent;
 import io.netty.util.internal.StringUtil;
-import io.netty.util.internal.ThrowableUtil;
 import io.netty.util.internal.UnstableApi;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
@@ -62,15 +61,7 @@ public abstract class AbstractEpollStreamChannel extends AbstractEpollChannel im
             " (expected: " + StringUtil.simpleClassName(ByteBuf.class) + ", " +
                     StringUtil.simpleClassName(DefaultFileRegion.class) + ')';
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(AbstractEpollStreamChannel.class);
-    private static final ClosedChannelException CLEAR_SPLICE_QUEUE_CLOSED_CHANNEL_EXCEPTION =
-            ThrowableUtil.unknownStackTrace(new ClosedChannelException(),
-                    AbstractEpollStreamChannel.class, "clearSpliceQueue()");
-    private static final ClosedChannelException SPLICE_TO_CLOSED_CHANNEL_EXCEPTION = ThrowableUtil.unknownStackTrace(
-            new ClosedChannelException(),
-            AbstractEpollStreamChannel.class, "spliceTo(...)");
-    private static final ClosedChannelException FAIL_SPLICE_IF_CLOSED_CLOSED_CHANNEL_EXCEPTION =
-            ThrowableUtil.unknownStackTrace(new ClosedChannelException(),
-            AbstractEpollStreamChannel.class, "failSpliceIfClosed(...)");
+
     private final Runnable flushTask = new Runnable() {
         @Override
         public void run() {
@@ -79,9 +70,9 @@ public abstract class AbstractEpollStreamChannel extends AbstractEpollChannel im
             ((AbstractEpollUnsafe) unsafe()).flush0();
         }
     };
-    private Queue<SpliceInTask> spliceQueue;
 
     // Lazy init these if we need to splice(...)
+    private volatile Queue<SpliceInTask> spliceQueue;
     private FileDescriptor pipeIn;
     private FileDescriptor pipeOut;
 
@@ -171,7 +162,7 @@ public abstract class AbstractEpollStreamChannel extends AbstractEpollChannel im
         }
         checkNotNull(promise, "promise");
         if (!isOpen()) {
-            promise.tryFailure(SPLICE_TO_CLOSED_CHANNEL_EXCEPTION);
+            promise.tryFailure(new ClosedChannelException());
         } else {
             addToSpliceQueue(new SpliceInChannelTask(ch, len, promise));
             failSpliceIfClosed(promise);
@@ -214,13 +205,13 @@ public abstract class AbstractEpollStreamChannel extends AbstractEpollChannel im
     public final ChannelFuture spliceTo(final FileDescriptor ch, final int offset, final int len,
                                         final ChannelPromise promise) {
         checkPositiveOrZero(len, "len");
-        checkPositiveOrZero(offset, "offser");
+        checkPositiveOrZero(offset, "offset");
         if (config().getEpollMode() != EpollMode.LEVEL_TRIGGERED) {
             throw new IllegalStateException("spliceTo() supported only when using " + EpollMode.LEVEL_TRIGGERED);
         }
         checkNotNull(promise, "promise");
         if (!isOpen()) {
-            promise.tryFailure(SPLICE_TO_CLOSED_CHANNEL_EXCEPTION);
+            promise.tryFailure(new ClosedChannelException());
         } else {
             addToSpliceQueue(new SpliceFdTask(ch, offset, len, promise));
             failSpliceIfClosed(promise);
@@ -232,7 +223,7 @@ public abstract class AbstractEpollStreamChannel extends AbstractEpollChannel im
         if (!isOpen()) {
             // Seems like the Channel was closed in the meantime try to fail the promise to prevent any
             // cases where a future may not be notified otherwise.
-            if (promise.tryFailure(FAIL_SPLICE_IF_CLOSED_CLOSED_CHANNEL_EXCEPTION)) {
+            if (promise.tryFailure(new ClosedChannelException())) {
                 eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {
@@ -687,15 +678,21 @@ public abstract class AbstractEpollStreamChannel extends AbstractEpollChannel im
     }
 
     private void clearSpliceQueue() {
-        if (spliceQueue == null) {
+        Queue<SpliceInTask> sQueue = spliceQueue;
+        if (sQueue == null) {
             return;
         }
+        ClosedChannelException exception = null;
+
         for (;;) {
-            SpliceInTask task = spliceQueue.poll();
+            SpliceInTask task = sQueue.poll();
             if (task == null) {
                 break;
             }
-            task.promise.tryFailure(CLEAR_SPLICE_QUEUE_CLOSED_CHANNEL_EXCEPTION);
+            if (exception == null) {
+                exception = new ClosedChannelException();
+            }
+            task.promise.tryFailure(exception);
         }
     }
 
@@ -704,9 +701,7 @@ public abstract class AbstractEpollStreamChannel extends AbstractEpollChannel im
             try {
                 fd.close();
             } catch (IOException e) {
-                if (logger.isWarnEnabled()) {
-                    logger.warn("Error while closing a pipe", e);
-                }
+                logger.warn("Error while closing a pipe", e);
             }
         }
     }
@@ -731,7 +726,10 @@ public abstract class AbstractEpollStreamChannel extends AbstractEpollChannel im
             allocHandle.readComplete();
             pipeline.fireChannelReadComplete();
             pipeline.fireExceptionCaught(cause);
-            if (close || cause instanceof IOException) {
+
+            // If oom will close the read event, release connection.
+            // See https://github.com/netty/netty/issues/10434
+            if (close || cause instanceof OutOfMemoryError || cause instanceof IOException) {
                 shutdownInput(false);
             }
         }
@@ -759,15 +757,16 @@ public abstract class AbstractEpollStreamChannel extends AbstractEpollChannel im
             ByteBuf byteBuf = null;
             boolean close = false;
             try {
+                Queue<SpliceInTask> sQueue = null;
                 do {
-                    if (spliceQueue != null) {
-                        SpliceInTask spliceTask = spliceQueue.peek();
+                    if (sQueue != null || (sQueue = spliceQueue) != null) {
+                        SpliceInTask spliceTask = sQueue.peek();
                         if (spliceTask != null) {
                             if (spliceTask.spliceIn(allocHandle)) {
                                 // We need to check if it is still active as if not we removed all SpliceTasks in
                                 // doClose(...)
                                 if (isActive()) {
-                                    spliceQueue.remove();
+                                    sQueue.remove();
                                 }
                                 continue;
                             } else {
@@ -827,24 +826,16 @@ public abstract class AbstractEpollStreamChannel extends AbstractEpollChannel im
     }
 
     private void addToSpliceQueue(final SpliceInTask task) {
-        EventLoop eventLoop = eventLoop();
-        if (eventLoop.inEventLoop()) {
-            addToSpliceQueue0(task);
-        } else {
-            eventLoop.execute(new Runnable() {
-                @Override
-                public void run() {
-                    addToSpliceQueue0(task);
+        Queue<SpliceInTask> sQueue = spliceQueue;
+        if (sQueue == null) {
+            synchronized (this) {
+                sQueue = spliceQueue;
+                if (sQueue == null) {
+                    spliceQueue = sQueue = PlatformDependent.newMpscQueue();
                 }
-            });
+            }
         }
-    }
-
-    private void addToSpliceQueue0(SpliceInTask task) {
-        if (spliceQueue == null) {
-            spliceQueue = PlatformDependent.newMpscQueue();
-        }
-        spliceQueue.add(task);
+        sQueue.add(task);
     }
 
     protected abstract class SpliceInTask {
@@ -987,7 +978,7 @@ public abstract class AbstractEpollStreamChannel extends AbstractEpollChannel im
     private final class SpliceFdTask extends SpliceInTask {
         private final FileDescriptor fd;
         private final ChannelPromise promise;
-        private final int offset;
+        private int offset;
 
         SpliceFdTask(FileDescriptor fd, int offset, int len, ChannelPromise promise) {
             super(len, promise);
@@ -1017,6 +1008,7 @@ public abstract class AbstractEpollStreamChannel extends AbstractEpollChannel im
                         }
                         do {
                             int splicedOut = Native.splice(pipeIn.intValue(), -1, fd.intValue(), offset, splicedIn);
+                            offset += splicedOut;
                             splicedIn -= splicedOut;
                         } while (splicedIn > 0);
                         if (len == 0) {
